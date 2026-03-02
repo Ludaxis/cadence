@@ -1,0 +1,22 @@
+{
+    "name": "Cadence.Tests.PlayMode",
+    "rootNamespace": "Cadence.Tests",
+    "references": [
+        "GUID:48c402ebcb948b31e6cedc0db122168b",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

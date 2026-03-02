@@ -1,0 +1,537 @@
+<ac:structured-macro ac:name="toc">
+  <ac:parameter ac:name="maxLevel">3</ac:parameter>
+</ac:structured-macro>
+
+<h1>Cadence DDA — Event Mapping &amp; Priority Matrix</h1>
+
+<ac:structured-macro ac:name="info">
+  <ac:rich-text-body>
+    <p>This document maps analytics events to Cadence DDA signal tiers, prioritized by impact on difficulty adaptation. Only <strong>P0–P2 events</strong> are required for a functional DDA pipeline. P3 events are optional enrichment.</p>
+  </ac:rich-text-body>
+</ac:structured-macro>
+
+<h2>Signal Tier Reference</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Tier</th>
+      <th>Name</th>
+      <th>Purpose</th>
+      <th>Example</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Blue</ac:parameter><ac:parameter ac:name="title">Tier 0</ac:parameter></ac:structured-macro></td>
+      <td>Decision Quality</td>
+      <td>Was the player's action good or bad?</td>
+      <td>move.optimal, move.waste, progress.delta</td>
+    </tr>
+    <tr>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Green</ac:parameter><ac:parameter ac:name="title">Tier 1</ac:parameter></ac:structured-macro></td>
+      <td>Behavioral Tempo</td>
+      <td>How fast is the player acting?</td>
+      <td>tempo.interval, tempo.hesitation</td>
+    </tr>
+    <tr>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Yellow</ac:parameter><ac:parameter ac:name="title">Tier 2</ac:parameter></ac:structured-macro></td>
+      <td>Strategic Pattern</td>
+      <td>What strategy is the player using?</td>
+      <td>strategy.powerup, resource.efficiency</td>
+    </tr>
+    <tr>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Grey</ac:parameter><ac:parameter ac:name="title">Tier 3</ac:parameter></ac:structured-macro></td>
+      <td>Retry &amp; Meta</td>
+      <td>Session-level retry and abandonment behavior</td>
+      <td>meta.attempt, meta.session_gap, meta.abandoned</td>
+    </tr>
+    <tr>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Grey</ac:parameter><ac:parameter ac:name="title">Tier 4</ac:parameter></ac:structured-macro></td>
+      <td>Raw Input</td>
+      <td>Low-level input accuracy</td>
+      <td>input.accuracy, input.rejected</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr />
+
+<h2>P0 — Session Lifecycle <ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Red</ac:parameter><ac:parameter ac:name="title">CRITICAL</ac:parameter></ac:structured-macro></h2>
+
+<ac:structured-macro ac:name="warning">
+  <ac:rich-text-body>
+    <p>These events define the session boundaries. Without them, <code>DDAService.BeginSession()</code> and <code>EndSession()</code> cannot function. Implementation is <strong>mandatory</strong>.</p>
+  </ac:rich-text-body>
+</ac:structured-macro>
+
+<table>
+  <thead>
+    <tr>
+      <th>Analytics Event</th>
+      <th>Cadence Signal</th>
+      <th>Tier</th>
+      <th>Parameters Used by DDA</th>
+      <th>When It Fires</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>song_start</strong></td>
+      <td><code>session.started</code></td>
+      <td>—</td>
+      <td>
+        <code>level_id</code> — level identifier<br/>
+        <code>attempt</code> — cumulative attempt count for this level<br/>
+        <code>play_type</code> — start | restart | replay<br/>
+        <code>level_type</code> — common | daily | secret<br/>
+        <code>live_status</code> — default | streak_buff_1/2/3 | infinite
+      </td>
+      <td>When the player starts a level (puzzle appears and gameplay begins)</td>
+    </tr>
+    <tr>
+      <td><strong>song_result</strong></td>
+      <td><code>session.ended</code> + <code>session.outcome</code></td>
+      <td>—</td>
+      <td>
+        <code>result</code> — win | lose<br/>
+        <code>progress</code> — 0–100 completion rate<br/>
+        <code>playtime</code> — seconds to complete<br/>
+        <code>perfect_percentage</code> — 0–100 accuracy rate<br/>
+        <code>hint_used</code> — count<br/>
+        <code>bomb_used</code> — count<br/>
+        <code>magnet_used</code> — count<br/>
+        <code>continue</code> — revive count
+      </td>
+      <td>When the result screen appears (win or lose)</td>
+    </tr>
+  </tbody>
+</table>
+
+<ac:structured-macro ac:name="code">
+  <ac:parameter ac:name="language">csharp</ac:parameter>
+  <ac:parameter ac:name="title">Integration Example — Session Lifecycle</ac:parameter>
+  <ac:plain-text-body><![CDATA[// On song_start
+_dda.BeginSession(levelId, new Dictionary<string, float>
+{
+    { "attempt", attemptCount },
+    { "level_type_code", levelTypeCode },  // 0=common, 1=daily, 2=secret
+    { "live_status_code", liveStatusCode } // 0=default, 1-3=streak_buff, 4=infinite
+});
+
+// On song_result
+_dda.RecordSignal(SignalKeys.ProgressDelta, progress / 100f, SignalTier.DecisionQuality);
+_dda.RecordSignal(SignalKeys.InputAccuracy, perfectPercentage / 100f, SignalTier.RawInput);
+_dda.EndSession(result == "win" ? SessionOutcome.Win : SessionOutcome.Lose);]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<hr />
+
+<h2>P1 — In-Session Signals <ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Yellow</ac:parameter><ac:parameter ac:name="title">HIGH</ac:parameter></ac:structured-macro></h2>
+
+<ac:structured-macro ac:name="info">
+  <ac:rich-text-body>
+    <p>These fire during active gameplay and feed the flow detector's real-time state classification (Flow, Boredom, Anxiety, Frustration).</p>
+  </ac:rich-text-body>
+</ac:structured-macro>
+
+<table>
+  <thead>
+    <tr>
+      <th>Analytics Event</th>
+      <th>Cadence Signal</th>
+      <th>Tier</th>
+      <th>Parameters Used by DDA</th>
+      <th>Why It Matters</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>song_booster_success</strong></td>
+      <td><code>strategy.powerup</code></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Yellow</ac:parameter><ac:parameter ac:name="title">Tier 2</ac:parameter></ac:structured-macro></td>
+      <td>
+        <code>booster_name</code> — hint | bomb | magnet<br/>
+        <code>requirement</code> — coin | ad | stock
+      </td>
+      <td>Confirmed booster use reveals when the player leans on assists. High usage = struggling. Requirement type shows economy pressure.</td>
+    </tr>
+    <tr>
+      <td><strong>song_revive_impression</strong></td>
+      <td><code>meta.frustration_trigger</code></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Grey</ac:parameter><ac:parameter ac:name="title">Tier 3</ac:parameter></ac:structured-macro></td>
+      <td>
+        <code>progress</code> — 0–100 at time of death<br/>
+        <code>count</code> — times shown in this session
+      </td>
+      <td>The player hit a wall — out of lives. The <code>progress</code> value at death is a direct frustration indicator. <code>count &gt; 1</code> = repeated deaths in one session.</td>
+    </tr>
+    <tr>
+      <td><strong>song_revive_click</strong></td>
+      <td><code>meta.revive_attempt</code></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Grey</ac:parameter><ac:parameter ac:name="title">Tier 3</ac:parameter></ac:structured-macro></td>
+      <td>
+        <code>location</code> — out_of_live | are_you_sure<br/>
+        <code>count</code> — times in this session
+      </td>
+      <td>Player chose to continue despite failure. Willingness to invest (ad/coins) signals engagement despite difficulty.</td>
+    </tr>
+    <tr>
+      <td><strong>song_revive_success</strong></td>
+      <td><code>meta.revive_success</code></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Grey</ac:parameter><ac:parameter ac:name="title">Tier 3</ac:parameter></ac:structured-macro></td>
+      <td>
+        <code>requirement</code> — coin | ad<br/>
+        <code>progress</code> — 0–100 at revive<br/>
+        <code>count</code> — times in this session
+      </td>
+      <td>Revive completed — player invested resources to keep going. Combined with outcome, tells us if the investment paid off.</td>
+    </tr>
+  </tbody>
+</table>
+
+<ac:structured-macro ac:name="code">
+  <ac:parameter ac:name="language">csharp</ac:parameter>
+  <ac:parameter ac:name="title">Integration Example — In-Session Signals</ac:parameter>
+  <ac:plain-text-body><![CDATA[// On song_booster_success
+_dda.RecordSignal(SignalKeys.PowerUpUsed, 1f, SignalTier.StrategicPattern);
+
+// On song_revive_impression
+_dda.RecordSignal("meta.frustration_trigger", progress / 100f, SignalTier.RetryMeta);
+
+// On song_revive_click
+_dda.RecordSignal("meta.revive_attempt", count, SignalTier.RetryMeta);
+
+// On song_revive_success
+_dda.RecordSignal("meta.revive_success", 1f, SignalTier.RetryMeta);]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<hr />
+
+<h2>P2 — Between-Session Enrichment <ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Blue</ac:parameter><ac:parameter ac:name="title">MEDIUM</ac:parameter></ac:structured-macro></h2>
+
+<ac:structured-macro ac:name="info">
+  <ac:rich-text-body>
+    <p>These enrich the player model between sessions and feed <code>StreakDamperRule</code> and <code>FrustrationReliefRule</code>.</p>
+  </ac:rich-text-body>
+</ac:structured-macro>
+
+<table>
+  <thead>
+    <tr>
+      <th>Analytics Event</th>
+      <th>Cadence Signal</th>
+      <th>Tier</th>
+      <th>Parameters Used by DDA</th>
+      <th>Why It Matters</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>song_start.attempt</strong></td>
+      <td><code>meta.attempt</code></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Grey</ac:parameter><ac:parameter ac:name="title">Tier 3</ac:parameter></ac:structured-macro></td>
+      <td><code>attempt</code> — cumulative count</td>
+      <td>High attempt count on a single level = player is stuck. Direct input to <code>FrustrationReliefRule</code>.</td>
+    </tr>
+    <tr>
+      <td><strong>song_start.play_type</strong></td>
+      <td><code>meta.play_type</code></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Grey</ac:parameter><ac:parameter ac:name="title">Tier 3</ac:parameter></ac:structured-macro></td>
+      <td><code>play_type</code> — start | restart | replay</td>
+      <td>Distinguishes fresh play from retries. <code>restart</code> = failed and retrying. <code>replay</code> = mastered, replaying for fun (skip DDA adjustment).</td>
+    </tr>
+    <tr>
+      <td><strong>song_booster_click</strong></td>
+      <td><code>strategy.powerup_attempt</code></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Yellow</ac:parameter><ac:parameter ac:name="title">Tier 2</ac:parameter></ac:structured-macro></td>
+      <td>
+        <code>booster_name</code> — hint | bomb | magnet<br/>
+        <code>requirement</code> — coin | ad | stock
+      </td>
+      <td>Booster tap that may not succeed (can't afford). <code>requirement = coin</code> when player is broke = economy pressure signal.</td>
+    </tr>
+    <tr>
+      <td><strong>level_streak_update</strong></td>
+      <td><code>meta.streak</code></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Grey</ac:parameter><ac:parameter ac:name="title">Tier 3</ac:parameter></ac:structured-macro></td>
+      <td>
+        <code>milestone</code> — 1 | 2 | 3<br/>
+        <code>status</code> — active | reset
+      </td>
+      <td>Win streak milestones and resets. Directly feeds <code>StreakDamperRule</code> to prevent overcorrection during hot/cold streaks.</td>
+    </tr>
+    <tr>
+      <td><strong>song_result (booster counts)</strong></td>
+      <td><code>strategy.booster_total</code></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Yellow</ac:parameter><ac:parameter ac:name="title">Tier 2</ac:parameter></ac:structured-macro></td>
+      <td>
+        <code>hint_used</code> — count<br/>
+        <code>bomb_used</code> — count<br/>
+        <code>magnet_used</code> — count
+      </td>
+      <td>Total boosters consumed in a session. High total = player needed heavy assistance. Zero = player relied on skill alone.</td>
+    </tr>
+    <tr>
+      <td><strong>song_result.playtime</strong></td>
+      <td><code>tempo.session_duration</code></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Green</ac:parameter><ac:parameter ac:name="title">Tier 1</ac:parameter></ac:structured-macro></td>
+      <td><code>playtime</code> — seconds</td>
+      <td>Session duration relative to expected level length. Abnormally long = struggling. Abnormally short = too easy or gave up early.</td>
+    </tr>
+  </tbody>
+</table>
+
+<ac:structured-macro ac:name="code">
+  <ac:parameter ac:name="language">csharp</ac:parameter>
+  <ac:parameter ac:name="title">Integration Example — Between-Session</ac:parameter>
+  <ac:plain-text-body><![CDATA[// On song_start — capture attempt and play_type
+_dda.RecordSignal(SignalKeys.AttemptNumber, attemptCount, SignalTier.RetryMeta);
+
+// On level_streak_update
+if (status == "reset")
+    _dda.RecordSignal("meta.streak_reset", milestone, SignalTier.RetryMeta);
+else
+    _dda.RecordSignal("meta.streak_milestone", milestone, SignalTier.RetryMeta);
+
+// On song_result — aggregate booster dependency
+float totalBoosters = hintUsed + bombUsed + magnetUsed;
+_dda.RecordSignal(SignalKeys.PowerUpUsed, totalBoosters, SignalTier.StrategicPattern);
+_dda.RecordSignal(SignalKeys.InterMoveInterval, playtime, SignalTier.BehavioralTempo);]]></ac:plain-text-body>
+</ac:structured-macro>
+
+<hr />
+
+<h2>P3 — Economy &amp; Profile Context <ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Green</ac:parameter><ac:parameter ac:name="title">LOW</ac:parameter></ac:structured-macro></h2>
+
+<ac:structured-macro ac:name="info">
+  <ac:rich-text-body>
+    <p>Optional enrichment signals. These don't fire during gameplay but provide cross-session context for the player model. Implement these after P0–P2 are validated.</p>
+  </ac:rich-text-body>
+</ac:structured-macro>
+
+<table>
+  <thead>
+    <tr>
+      <th>Analytics Event</th>
+      <th>Cadence Signal</th>
+      <th>Tier</th>
+      <th>Parameters Used by DDA</th>
+      <th>Why It Matters</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>item_earned</strong></td>
+      <td><code>resource.earned</code></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Yellow</ac:parameter><ac:parameter ac:name="title">Tier 2</ac:parameter></ac:structured-macro></td>
+      <td>
+        <code>item_id</code> — currency type<br/>
+        <code>amount</code> — quantity<br/>
+        <code>source</code> — common_level_reward | daily_level_reward | treasure_hunt | gold_tile
+      </td>
+      <td>Tracks resource income. Low earn rate + high spend = economy squeeze, which indirectly affects difficulty tolerance.</td>
+    </tr>
+    <tr>
+      <td><strong>item_spent</strong></td>
+      <td><code>resource.spent</code></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Yellow</ac:parameter><ac:parameter ac:name="title">Tier 2</ac:parameter></ac:structured-macro></td>
+      <td>
+        <code>item_id</code> — currency type<br/>
+        <code>amount</code> — quantity<br/>
+        <code>source</code> — hint | bomb | magnet
+      </td>
+      <td>Tracks spend on boosters. Spend rate rising over time = player is compensating for difficulty with economy.</td>
+    </tr>
+    <tr>
+      <td><strong>booster_update</strong></td>
+      <td><code>resource.stored</code></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Yellow</ac:parameter><ac:parameter ac:name="title">Tier 2</ac:parameter></ac:structured-macro></td>
+      <td>
+        <code>booster_name</code> — hint | bomb | magnet | infinite_lives<br/>
+        <code>amount</code> — quantity
+      </td>
+      <td>Inventory snapshot. Empty inventory + high difficulty = player has no safety net.</td>
+    </tr>
+    <tr>
+      <td><strong>User property: total_level_played</strong></td>
+      <td><em>(profile enrichment)</em></td>
+      <td>—</td>
+      <td><code>total_level_played</code> — integer</td>
+      <td>Player maturity indicator. More levels played = more data for Glicko-2 confidence.</td>
+    </tr>
+    <tr>
+      <td><strong>User property: coin_balance</strong></td>
+      <td><em>(profile enrichment)</em></td>
+      <td>—</td>
+      <td><code>coin_balance</code> — integer</td>
+      <td>Economy health check. Near-zero balance constrains booster access, effectively raising difficulty.</td>
+    </tr>
+    <tr>
+      <td><strong>me_start / me_result</strong></td>
+      <td><em>(duplicate filtering)</em></td>
+      <td>—</td>
+      <td>Same as song_start / song_result</td>
+      <td>Only fires if playtime &ge; 15s. Can be used to filter out accidental starts or instant quits before feeding DDA.</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr />
+
+<h2>P4 — Not Needed for DDA <ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Grey</ac:parameter><ac:parameter ac:name="title">SKIP</ac:parameter></ac:structured-macro></h2>
+
+<ac:structured-macro ac:name="note">
+  <ac:rich-text-body>
+    <p>These events serve analytics, monetization, or UI tracking purposes. They carry no gameplay performance signal and should <strong>not</strong> be wired to Cadence.</p>
+  </ac:rich-text-body>
+</ac:structured-macro>
+
+<table>
+  <thead>
+    <tr>
+      <th>Category</th>
+      <th>Events</th>
+      <th>Reason to Skip</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>UI Navigation</td>
+      <td><code>song_impression</code>, <code>song_click</code>, <code>song_ap</code>, <code>screen_open</code>, <code>popup_open</code>, <code>button_click</code></td>
+      <td>Browsing and navigation behavior — no gameplay skill signal</td>
+    </tr>
+    <tr>
+      <td>Ad Monetization</td>
+      <td><code>fullads_request</code>, <code>fullads_show</code>, <code>rewarded_*</code>, <code>ad_impression</code>, all Firebase/AppsFlyer ad events</td>
+      <td>Business metrics — ad exposure does not indicate player skill</td>
+    </tr>
+    <tr>
+      <td>IAP</td>
+      <td><code>iap_impression</code>, <code>iap_click</code>, <code>iap_purchased</code></td>
+      <td>Purchase behavior — monetization tracking, not performance</td>
+    </tr>
+    <tr>
+      <td>Subscriptions</td>
+      <td><code>sub_cata_show</code>, <code>sub_cata_click</code>, <code>sub_purchased</code></td>
+      <td>Subscription funnel — business metrics only</td>
+    </tr>
+    <tr>
+      <td>FTUE</td>
+      <td><code>ftue_main</code> (step_01 through step_28)</td>
+      <td>Tutorial tracking — DDA should be disabled entirely during onboarding</td>
+    </tr>
+    <tr>
+      <td>Collection</td>
+      <td><code>artwork_unlock</code>, <code>artwork_click</code></td>
+      <td>Meta-game progression — no difficulty signal</td>
+    </tr>
+    <tr>
+      <td>Cosmetics</td>
+      <td><code>avatar_update</code>, <code>frame_update</code></td>
+      <td>Cosmetic customization — irrelevant to difficulty</td>
+    </tr>
+    <tr>
+      <td>Treasure Hunt</td>
+      <td><code>treasure_hunt_update</code>, <code>treasure_hunt_reward</code></td>
+      <td>Meta-game progress — does not reflect in-level performance</td>
+    </tr>
+    <tr>
+      <td>Account</td>
+      <td><code>login</code>, all ULS events</td>
+      <td>Authentication and social — no gameplay data</td>
+    </tr>
+    <tr>
+      <td>Content Metadata</td>
+      <td>All ACM events</td>
+      <td>Content catalog tagging — infrastructure, not gameplay</td>
+    </tr>
+  </tbody>
+</table>
+
+<hr />
+
+<h2>Implementation Checklist</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Phase</th>
+      <th>Priority</th>
+      <th>Events to Wire</th>
+      <th>Cadence APIs</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Phase 1</strong></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Red</ac:parameter><ac:parameter ac:name="title">P0</ac:parameter></ac:structured-macro></td>
+      <td><code>song_start</code>, <code>song_result</code></td>
+      <td><code>BeginSession()</code>, <code>EndSession()</code>, <code>RecordSignal(ProgressDelta)</code>, <code>RecordSignal(InputAccuracy)</code></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Grey</ac:parameter><ac:parameter ac:name="title">TODO</ac:parameter></ac:structured-macro></td>
+    </tr>
+    <tr>
+      <td><strong>Phase 2</strong></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Yellow</ac:parameter><ac:parameter ac:name="title">P1</ac:parameter></ac:structured-macro></td>
+      <td><code>song_booster_success</code>, <code>song_revive_impression</code>, <code>song_revive_click</code>, <code>song_revive_success</code></td>
+      <td><code>RecordSignal(PowerUpUsed)</code>, <code>RecordSignal(meta.frustration_trigger)</code>, <code>RecordSignal(meta.revive_*)</code></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Grey</ac:parameter><ac:parameter ac:name="title">TODO</ac:parameter></ac:structured-macro></td>
+    </tr>
+    <tr>
+      <td><strong>Phase 3</strong></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Blue</ac:parameter><ac:parameter ac:name="title">P2</ac:parameter></ac:structured-macro></td>
+      <td><code>song_start.attempt/play_type</code>, <code>song_booster_click</code>, <code>level_streak_update</code>, booster counts from <code>song_result</code></td>
+      <td><code>RecordSignal(AttemptNumber)</code>, <code>RecordSignal(meta.streak*)</code>, <code>RecordSignal(InterMoveInterval)</code></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Grey</ac:parameter><ac:parameter ac:name="title">TODO</ac:parameter></ac:structured-macro></td>
+    </tr>
+    <tr>
+      <td><strong>Phase 4</strong></td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Green</ac:parameter><ac:parameter ac:name="title">P3</ac:parameter></ac:structured-macro></td>
+      <td><code>item_earned</code>, <code>item_spent</code>, <code>booster_update</code>, user properties</td>
+      <td><code>RecordSignal(ResourceStored)</code>, player profile enrichment</td>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Grey</ac:parameter><ac:parameter ac:name="title">TODO</ac:parameter></ac:structured-macro></td>
+    </tr>
+  </tbody>
+</table>
+
+<hr />
+
+<h2>Summary</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Priority</th>
+      <th>Event Count</th>
+      <th>Purpose</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Red</ac:parameter><ac:parameter ac:name="title">P0 CRITICAL</ac:parameter></ac:structured-macro></td>
+      <td>2 events</td>
+      <td>Session open/close — DDA cannot function without these</td>
+    </tr>
+    <tr>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Yellow</ac:parameter><ac:parameter ac:name="title">P1 HIGH</ac:parameter></ac:structured-macro></td>
+      <td>4 events</td>
+      <td>In-session flow detection — booster use, revive behavior</td>
+    </tr>
+    <tr>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Blue</ac:parameter><ac:parameter ac:name="title">P2 MEDIUM</ac:parameter></ac:structured-macro></td>
+      <td>6 signals (from 4 events)</td>
+      <td>Between-session model enrichment — retry, streak, tempo</td>
+    </tr>
+    <tr>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Green</ac:parameter><ac:parameter ac:name="title">P3 LOW</ac:parameter></ac:structured-macro></td>
+      <td>5 events + 2 user properties</td>
+      <td>Economy context and profile enrichment — optional</td>
+    </tr>
+    <tr>
+      <td><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Grey</ac:parameter><ac:parameter ac:name="title">P4 SKIP</ac:parameter></ac:structured-macro></td>
+      <td>~50+ events</td>
+      <td>Ads, IAP, navigation, FTUE, cosmetics, content metadata — not wired to DDA</td>
+    </tr>
+  </tbody>
+</table>

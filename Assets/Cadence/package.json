@@ -1,0 +1,34 @@
+{
+    "name": "com.ludaxis.cadence",
+    "version": "1.0.0",
+    "displayName": "Cadence - Dynamic Difficulty Adjustment",
+    "description": "Game-agnostic DDA SDK for Unity. Signal-based player modeling, real-time flow detection, Glicko-2 skill tracking, and adaptive difficulty proposals.",
+    "unity": "2021.3",
+    "license": "MIT",
+    "author": {
+        "name": "Ludaxis",
+        "url": "https://github.com/Ludaxis"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/Ludaxis/cadence.git"
+    },
+    "keywords": [
+        "dda",
+        "difficulty",
+        "adaptive",
+        "flow",
+        "glicko",
+        "player-modeling",
+        "game-balance"
+    ],
+    "samples": [
+        {
+            "displayName": "Basic Integration",
+            "description": "Minimal example showing session lifecycle and signal recording.",
+            "path": "Samples~/BasicIntegration"
+        }
+    ],
+    "documentationUrl": "https://github.com/Ludaxis/cadence#readme",
+    "changelogUrl": "https://github.com/Ludaxis/cadence/blob/main/Assets/Cadence/CHANGELOG.md"
+}
