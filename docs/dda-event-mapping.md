@@ -1,6 +1,16 @@
-# Cadence DDA — Event Mapping & Priority Matrix
+# Cadence DDA — Player Performance Event Tracking
 
-> This document maps analytics events to Cadence DDA signal tiers, prioritized by impact on difficulty adaptation. Only **P0–P2 events** are required for a functional DDA pipeline. P3 events are optional enrichment.
+> Source format reference: `NCT_Event Mastersheet.xlsx`
+> Scope: Events needed for player performance tracking in a mobile casual puzzle game.
+> Only **Must Have** and **Should Have** events are listed — analytics-only events (ads, IAP, navigation, FTUE, cosmetics, account) are excluded.
+>
+> Tags: `[NCT]` = already exists in the mastersheet. `[NEW]` = must be added for DDA.
+
+---
+
+## The Problem With Current Event Coverage
+
+The existing event mastersheet captures **session boundaries** (`song_start`, `song_result`) and **aggregate outcomes** (total boosters, final progress, playtime). But Cadence's FlowDetector needs **moment-to-moment in-session signals** — individual tile taps, timing between moves, heart losses, and hesitation patterns that happen *during* gameplay. Without these, the DDA system is blind between session open and session close.
 
 ---
 
@@ -16,172 +26,473 @@
 
 ---
 
-## P0 — Session Lifecycle 🔴 CRITICAL
+## Must Have Events
 
-> ⚠️ These events define the session boundaries. Without them, `DDAService.BeginSession()` and `EndSession()` cannot function. Implementation is **mandatory**.
+### M1 — `[NCT]` song_start
 
-| Analytics Event | Cadence Signal | Tier | Parameters Used by DDA | When It Fires |
-|----------------|---------------|------|----------------------|---------------|
-| **song_start** | `session.started` | — | `level_id` — level identifier | When the player starts a level |
-| | | | `attempt` — cumulative attempt count for this level | |
-| | | | `play_type` — start \| restart \| replay | |
-| | | | `level_type` — common \| daily \| secret | |
-| | | | `live_status` — default \| streak_buff_1/2/3 \| infinite | |
-| **song_result** | `session.ended` + `session.outcome` | — | `result` — win \| lose | When the result screen appears (win or lose) |
-| | | | `progress` — 0–100 completion rate | |
-| | | | `playtime` — seconds to complete | |
-| | | | `perfect_percentage` — 0–100 accuracy rate | |
-| | | | `hint_used` — count | |
-| | | | `bomb_used` — count | |
-| | | | `magnet_used` — count | |
-| | | | `continue` — revive count | |
+| No | Event Name | Event Parameter name | Value Type | Parameter Value | Trigger Logic (Description) | Description |
+|----|-----------|---------------------|-----------|----------------|---------------------------|-------------|
+| 1 | song_start | | | | Trigger whenever user starts a level (when the level starts and the puzzle is shown). Including: restart, replay. Not including: revive or resume. | Session boundary — `BeginSession()` |
+| | | level_id | String | [id] | | Current level ID |
+| | | song_id | String | [id] | | Song name that user plays |
+| | | attempt | Integer | [cumulative count] | | Total number of attempts for the song. High count = player is stuck. |
+| | | level_type | String | common \| daily \| secret | | Level category |
+| | | play_type | String | start \| restart \| replay | | How the user entered. `restart` = failed and retrying. `replay` = mastered. |
+| | | live_status | String | default \| streak_buff_1 \| streak_buff_2 \| streak_buff_3 \| infinite | | Hearts/shields at level start |
+| | | total_level_played | Integer | [number] | | Total unique levels played. Player maturity indicator. |
+| | | `[NEW]` par_moves | Integer | [number] | | Level designer's minimum moves to complete the level perfectly. Needed for skill efficiency ratio. |
 
-**Integration Example — Session Lifecycle:**
+**Cadence Mapping:** `session.started` (—), `meta.attempt` (Tier 3), `meta.play_type` (Tier 3)
+
+---
+
+### M2 — `[NCT]` song_result
+
+| No | Event Name | Event Parameter name | Value Type | Parameter Value | Trigger Logic (Description) | Description |
+|----|-----------|---------------------|-----------|----------------|---------------------------|-------------|
+| 2 | song_result | | | | Trigger when user reaches the result screen (Congratulations or Out-of-Lives refuse). | Session boundary — `EndSession()` |
+| | | level_id | String | [id] | | Current level ID |
+| | | song_id | String | [id] | | Song name that user plays |
+| | | level_type | String | common \| daily \| secret | | Level category |
+| | | result | String | win \| lose | | Core outcome for Glicko-2 skill model update |
+| | | playtime | Integer | [seconds] | | Total time playing. Abnormally long = struggling. Abnormally short = too easy or gave up. |
+| | | progress | Integer | 0–100 | | Completion rate (removed tiles / all tiles) |
+| | | perfect_percentage | Integer | 0–100 | | Accuracy rate (perfect tiles / all tiles) |
+| | | hint_used | Integer | [count] | | Total hints used. High = needed assistance. |
+| | | bomb_used | Integer | [count] | | Total bombs used. |
+| | | magnet_used | Integer | [count] | | Total magnets used. |
+| | | continue | Integer | [count] | | Total revives used. |
+| | | `[NEW]` actual_moves | Integer | [number] | | Player's total moves this session. |
+| | | `[NEW]` par_moves | Integer | [number] | | Echo of level minimum moves. Enables `actual_moves / par_moves` skill ratio. |
+
+**Cadence Mapping:**
+
+| Parameter | Cadence Signal | Tier |
+|-----------|---------------|------|
+| *(event itself)* | `session.ended` + `session.outcome` | — |
+| result | SessionOutcome.Win / Lose | — |
+| progress | `progress.delta` | Tier 0 |
+| perfect_percentage | `input.accuracy` | Tier 4 |
+| playtime | `tempo.session_duration` | Tier 1 |
+| hint_used + bomb_used + magnet_used | `strategy.booster_total` | Tier 2 |
+| par_moves / actual_moves | `resource.efficiency` | Tier 0 |
+
+**Integration Example:**
 
 ```csharp
 // On song_start
 _dda.BeginSession(levelId, new Dictionary<string, float>
 {
     { "attempt", attemptCount },
-    { "level_type_code", levelTypeCode },  // 0=common, 1=daily, 2=secret
-    { "live_status_code", liveStatusCode } // 0=default, 1-3=streak_buff, 4=infinite
+    { "par_moves", parMoves },
+    { "level_type_code", levelTypeCode },
+    { "live_status_code", liveStatusCode }
 });
+_dda.RecordSignal(SignalKeys.AttemptNumber, attemptCount, SignalTier.RetryMeta);
 
 // On song_result
 _dda.RecordSignal(SignalKeys.ProgressDelta, progress / 100f, SignalTier.DecisionQuality);
 _dda.RecordSignal(SignalKeys.InputAccuracy, perfectPercentage / 100f, SignalTier.RawInput);
+
+float moveEfficiency = parMoves > 0
+    ? Mathf.Clamp01((float)parMoves / actualMoves)
+    : 0f;
+_dda.RecordSignal(SignalKeys.ResourceEfficiency, moveEfficiency, SignalTier.DecisionQuality);
+
+float totalBoosters = hintUsed + bombUsed + magnetUsed;
+_dda.RecordSignal(SignalKeys.PowerUpUsed, totalBoosters, SignalTier.StrategicPattern);
+
 _dda.EndSession(result == "win" ? SessionOutcome.Win : SessionOutcome.Lose);
 ```
 
 ---
 
-## P1 — In-Session Signals 🟡 HIGH
+### M3 — `[NEW]` tile_tap
 
-> ℹ️ These fire during active gameplay and feed the flow detector's real-time state classification (Flow, Boredom, Anxiety, Frustration).
+> **The most important new event.** Every single tile interaction. This is the atomic unit of gameplay that feeds the FlowDetector's real-time classification. Without this, Cadence cannot detect Flow, Boredom, Anxiety, or Frustration during gameplay.
 
-| Analytics Event | Cadence Signal | Tier | Parameters Used by DDA | Why It Matters |
-|----------------|---------------|------|----------------------|----------------|
-| **song_booster_success** | `strategy.powerup` | Tier 2 | `booster_name` — hint \| bomb \| magnet | Confirmed booster use reveals when the player leans on assists. High usage = struggling. |
-| | | | `requirement` — coin \| ad \| stock | Requirement type shows economy pressure. |
-| **song_revive_impression** | `meta.frustration_trigger` | Tier 3 | `progress` — 0–100 at time of death | The player hit a wall — out of lives. |
-| | | | `count` — times shown in this session | `count > 1` = repeated deaths in one session. |
-| **song_revive_click** | `meta.revive_attempt` | Tier 3 | `location` — out_of_live \| are_you_sure | Player chose to continue despite failure. |
-| | | | `count` — times in this session | Willingness to invest signals engagement despite difficulty. |
-| **song_revive_success** | `meta.revive_success` | Tier 3 | `requirement` — coin \| ad | Revive completed — player invested resources to keep going. |
-| | | | `progress` — 0–100 at revive | Combined with outcome, tells us if the investment paid off. |
-| | | | `count` — times in this session | |
+| No | Event Name | Event Parameter name | Value Type | Parameter Value | Trigger Logic (Description) | Description |
+|----|-----------|---------------------|-----------|----------------|---------------------------|-------------|
+| 3 | tile_tap | | | | Trigger on every tile interaction by the player during action phase. Fires regardless of whether the tap results in a perfect, good, or miss. | The fundamental gameplay unit for DDA. |
+| | | level_id | String | [id] | | Current level ID |
+| | | song_id | String | [id] | | Song name that user plays |
+| | | move_index | Integer | [sequential, 1-based] | | Sequential move number within this session. Increments per tap. |
+| | | result | String | perfect | | Tile tapped with perfect timing/accuracy |
+| | | | | good | | Tile tapped correctly but not perfect |
+| | | | | miss | | Tile tapped incorrectly or at wrong time |
+| | | tap_time | Float | [seconds] | | Time elapsed since level start when the tap occurred |
+| | | inter_move_time | Float | [seconds] | | Time since the previous tile_tap (0 for first tap). Key tempo signal. |
+| | | tiles_remaining | Integer | [count] | | Tiles remaining on the board after this tap |
+| | | tiles_total | Integer | [count] | | Total tiles in the level (constant per level) |
+| | | hearts_remaining | Integer | [count] | | Current hearts/lives remaining after this tap |
+| | | combo_count | Integer | [count] | | Current consecutive combo count (0 if combo just broke) |
+| | | progress | Integer | 0–100 | | Completion rate at this moment |
 
-**Integration Example — In-Session Signals:**
+**What this single event feeds in Cadence (all 5 tiers):**
+
+| Derived Cadence Signal | Tier | How It's Derived |
+|----------------------|------|-----------------|
+| `move.executed` | Tier 0 | Every tile_tap fires MoveExecuted |
+| `move.optimal` | Tier 0 | result = perfect or good → 1.0; result = miss → 0.0 |
+| `move.waste` | Tier 0 | result = miss → waste value of 1.0 |
+| `progress.delta` | Tier 0 | Change in progress between consecutive taps |
+| `tempo.interval` | Tier 1 | inter_move_time directly → InterMoveInterval |
+| `strategy.sequence_match` | Tier 2 | combo_count > 0 → combo sustained (skill signal) |
+| `input.accuracy` | Tier 4 | Running ratio of (perfect + good) / total taps |
+
+**Integration Example:**
 
 ```csharp
-// On song_booster_success
-_dda.RecordSignal(SignalKeys.PowerUpUsed, 1f, SignalTier.StrategicPattern);
+// On tile_tap
+_dda.RecordSignal(SignalKeys.MoveExecuted, 1f, SignalTier.DecisionQuality, moveIndex);
 
-// On song_revive_impression
-_dda.RecordSignal("meta.frustration_trigger", progress / 100f, SignalTier.RetryMeta);
+bool isOptimal = (result == "perfect" || result == "good");
+_dda.RecordSignal(SignalKeys.MoveOptimal, isOptimal ? 1f : 0f,
+    SignalTier.DecisionQuality, moveIndex);
 
-// On song_revive_click
-_dda.RecordSignal("meta.revive_attempt", count, SignalTier.RetryMeta);
+if (result == "miss")
+    _dda.RecordSignal(SignalKeys.MoveWaste, 1f, SignalTier.DecisionQuality, moveIndex);
 
-// On song_revive_success
-_dda.RecordSignal("meta.revive_success", 1f, SignalTier.RetryMeta);
+_dda.RecordSignal(SignalKeys.InterMoveInterval, interMoveTime, SignalTier.BehavioralTempo);
+
+if (comboCount > 0)
+    _dda.RecordSignal(SignalKeys.SequenceMatch, 1f, SignalTier.StrategicPattern);
 ```
 
 ---
 
-## P2 — Between-Session Enrichment 🔵 MEDIUM
+### M4 — `[NEW]` heart_lost
 
-> ℹ️ These enrich the player model between sessions and feed `StreakDamperRule` and `FrustrationReliefRule`.
+> Fires the instant a heart/life is lost. Direct frustration signal. Unlike song_revive_impression (which fires when ALL lives are gone), this fires on EACH individual life loss.
 
-| Analytics Event | Cadence Signal | Tier | Parameters Used by DDA | Why It Matters |
-|----------------|---------------|------|----------------------|----------------|
-| **song_start.attempt** | `meta.attempt` | Tier 3 | `attempt` — cumulative count | High attempt count = player is stuck. Direct input to `FrustrationReliefRule`. |
-| **song_start.play_type** | `meta.play_type` | Tier 3 | `play_type` — start \| restart \| replay | `restart` = failed and retrying. `replay` = mastered, replaying for fun (skip DDA). |
-| **song_booster_click** | `strategy.powerup_attempt` | Tier 2 | `booster_name` — hint \| bomb \| magnet | Booster tap that may not succeed (can't afford). |
-| | | | `requirement` — coin \| ad \| stock | `requirement = coin` when broke = economy pressure signal. |
-| **level_streak_update** | `meta.streak` | Tier 3 | `milestone` — 1 \| 2 \| 3 | Win streak milestones and resets. |
-| | | | `status` — active \| reset | Directly feeds `StreakDamperRule` to prevent overcorrection. |
-| **song_result (booster counts)** | `strategy.booster_total` | Tier 2 | `hint_used` — count | Total boosters consumed in a session. |
-| | | | `bomb_used` — count | High total = player needed heavy assistance. |
-| | | | `magnet_used` — count | Zero = player relied on skill alone. |
-| **song_result.playtime** | `tempo.session_duration` | Tier 1 | `playtime` — seconds | Abnormally long = struggling. Abnormally short = too easy or gave up. |
+| No | Event Name | Event Parameter name | Value Type | Parameter Value | Trigger Logic (Description) | Description |
+|----|-----------|---------------------|-----------|----------------|---------------------------|-------------|
+| 4 | heart_lost | | | | Trigger every time the player loses a heart/life during action phase. | Immediate frustration signal. |
+| | | level_id | String | [id] | | Current level ID |
+| | | song_id | String | [id] | | Song name that user plays |
+| | | move_index | Integer | [sequential] | | Move number when the heart was lost |
+| | | cause | String | wrong_tile | | Heart lost due to tapping wrong tile |
+| | | | | timeout | | Heart lost due to time running out |
+| | | | | obstacle | | Heart lost due to obstacle or trap tile |
+| | | hearts_remaining | Integer | [count] | | Hearts remaining AFTER this loss (0 = out of lives) |
+| | | hearts_total | Integer | [count] | | Hearts the player started with |
+| | | progress | Integer | 0–100 | | Completion rate when the heart was lost |
+| | | time_since_last_heart_lost | Float | [seconds] | | Time since previous heart_lost (0 if first). Rapid successive losses = strong frustration. |
 
-**Integration Example — Between-Session:**
+**Cadence Mapping:** `move.waste` (Tier 0), `input.rejected` (Tier 4), `meta.frustration_trigger` (Tier 3 when hearts_remaining == 0)
+
+**Integration Example:**
 
 ```csharp
-// On song_start — capture attempt and play_type
-_dda.RecordSignal(SignalKeys.AttemptNumber, attemptCount, SignalTier.RetryMeta);
+// On heart_lost
+_dda.RecordSignal(SignalKeys.MoveWaste, 1f, SignalTier.DecisionQuality, moveIndex);
+_dda.RecordSignal(SignalKeys.InputRejected, 1f, SignalTier.RawInput);
 
-// On level_streak_update
-if (status == "reset")
-    _dda.RecordSignal("meta.streak_reset", milestone, SignalTier.RetryMeta);
-else
-    _dda.RecordSignal("meta.streak_milestone", milestone, SignalTier.RetryMeta);
+if (heartsRemaining == 0)
+    _dda.RecordSignal("meta.frustration_trigger", progress / 100f, SignalTier.RetryMeta);
 
-// On song_result — aggregate booster dependency
-float totalBoosters = hintUsed + bombUsed + magnetUsed;
-_dda.RecordSignal(SignalKeys.PowerUpUsed, totalBoosters, SignalTier.StrategicPattern);
-_dda.RecordSignal(SignalKeys.InterMoveInterval, playtime, SignalTier.BehavioralTempo);
+if (timeSinceLastHeartLost > 0f && timeSinceLastHeartLost < 5f)
+    _dda.RecordSignal("meta.rapid_failure", 1f, SignalTier.RetryMeta);
 ```
 
 ---
 
-## P3 — Economy & Profile Context 🟢 LOW
+### M5 — `[NEW]` level_pause
 
-> ℹ️ Optional enrichment signals. These don't fire during gameplay but provide cross-session context for the player model. Implement after P0–P2 are validated.
+> Fires when the player pauses the game. Disengagement signal — frequent or long pauses indicate confusion, frustration, or loss of interest.
 
-| Analytics Event | Cadence Signal | Tier | Parameters Used by DDA | Why It Matters |
-|----------------|---------------|------|----------------------|----------------|
-| **item_earned** | `resource.earned` | Tier 2 | `item_id` — currency type | Tracks resource income. |
-| | | | `amount` — quantity | Low earn rate + high spend = economy squeeze. |
-| | | | `source` — common_level_reward \| daily_level_reward \| treasure_hunt \| gold_tile | |
-| **item_spent** | `resource.spent` | Tier 2 | `item_id` — currency type | Tracks spend on boosters. |
-| | | | `amount` — quantity | Spend rate rising = compensating for difficulty with economy. |
-| | | | `source` — hint \| bomb \| magnet | |
-| **booster_update** | `resource.stored` | Tier 2 | `booster_name` — hint \| bomb \| magnet \| infinite_lives | Inventory snapshot. |
-| | | | `amount` — quantity | Empty inventory + high difficulty = no safety net. |
-| **User property: total_level_played** | *(profile enrichment)* | — | `total_level_played` — integer | Player maturity indicator. More levels = more Glicko-2 confidence. |
-| **User property: coin_balance** | *(profile enrichment)* | — | `coin_balance` — integer | Economy health check. Near-zero constrains booster access. |
-| **me_start / me_result** | *(duplicate filtering)* | — | Same as song_start / song_result | Only fires if playtime >= 15s. Filters accidental starts. |
+| No | Event Name | Event Parameter name | Value Type | Parameter Value | Trigger Logic (Description) | Description |
+|----|-----------|---------------------|-----------|----------------|---------------------------|-------------|
+| 5 | level_pause | | | | Trigger when the player pauses the game during action phase (pause button, app background). | Disengagement signal. |
+| | | level_id | String | [id] | | Current level ID |
+| | | song_id | String | [id] | | Song name that user plays |
+| | | trigger | String | button | | Player tapped the pause button |
+| | | | | background | | App went to background |
+| | | pause_time | Float | [seconds] | | Time elapsed since level start when pause occurred |
+| | | progress | Integer | 0–100 | | Completion rate when pause occurred |
+| | | hearts_remaining | Integer | [count] | | Hearts remaining when pause occurred |
+
+**Cadence Mapping:** `tempo.pause` (Tier 1)
+
+```csharp
+_dda.RecordSignal(SignalKeys.PauseTriggered, 1f, SignalTier.BehavioralTempo);
+```
 
 ---
 
-## P4 — Not Needed for DDA ⚪ SKIP
+### M6 — `[NEW]` idle_detected
 
-> These events serve analytics, monetization, or UI tracking purposes. They carry no gameplay performance signal and should **not** be wired to Cadence.
+> Fires when the player has not interacted with the board for a configurable threshold (recommended: 5 seconds) while the game is still running. Hesitation is the earliest signal of anxiety.
 
-| Category | Events | Reason to Skip |
-|----------|--------|---------------|
-| UI Navigation | `song_impression`, `song_click`, `song_ap`, `screen_open`, `popup_open`, `button_click` | Browsing and navigation — no gameplay skill signal |
-| Ad Monetization | `fullads_request`, `fullads_show`, `rewarded_*`, `ad_impression`, all Firebase/AppsFlyer ad events | Business metrics — ad exposure does not indicate player skill |
-| IAP | `iap_impression`, `iap_click`, `iap_purchased` | Purchase behavior — monetization tracking, not performance |
-| Subscriptions | `sub_cata_show`, `sub_cata_click`, `sub_purchased` | Subscription funnel — business metrics only |
-| FTUE | `ftue_main` (step_01 through step_28) | Tutorial tracking — DDA should be disabled entirely during onboarding |
-| Collection | `artwork_unlock`, `artwork_click` | Meta-game progression — no difficulty signal |
-| Cosmetics | `avatar_update`, `frame_update` | Cosmetic customization — irrelevant to difficulty |
-| Treasure Hunt | `treasure_hunt_update`, `treasure_hunt_reward` | Meta-game progress — does not reflect in-level performance |
-| Account | `login`, all ULS events | Authentication and social — no gameplay data |
-| Content Metadata | All ACM events | Content catalog tagging — infrastructure, not gameplay |
+| No | Event Name | Event Parameter name | Value Type | Parameter Value | Trigger Logic (Description) | Description |
+|----|-----------|---------------------|-----------|----------------|---------------------------|-------------|
+| 6 | idle_detected | | | | Trigger when the player has not tapped any tile for threshold period (default: 5 seconds) during active gameplay. Does NOT fire if game is paused. Fires once per idle period, resets on next tap. | Hesitation/confusion signal. |
+| | | level_id | String | [id] | | Current level ID |
+| | | song_id | String | [id] | | Song name that user plays |
+| | | idle_duration | Float | [seconds] | | How long the player has been idle when this fires |
+| | | move_index | Integer | [sequential] | | Last move index before idle started |
+| | | progress | Integer | 0–100 | | Completion rate when idle was detected |
+| | | hearts_remaining | Integer | [count] | | Hearts remaining when idle was detected |
+| | | tiles_remaining | Integer | [count] | | Tiles remaining when idle was detected |
+
+**Cadence Mapping:** `tempo.hesitation` (Tier 1)
+
+```csharp
+_dda.RecordSignal(SignalKeys.HesitationTime, idleDuration, SignalTier.BehavioralTempo);
+```
+
+---
+
+### M7 — `[NCT]` song_booster_success
+
+| No | Event Name | Event Parameter name | Value Type | Parameter Value | Trigger Logic (Description) | Description |
+|----|-----------|---------------------|-----------|----------------|---------------------------|-------------|
+| 7 | song_booster_success | | | | Triggered every time user successfully uses a booster in action phase. | In-session struggle indicator. High usage = player is struggling. |
+| | | level_id | String | [id] | | Current level ID |
+| | | song_id | String | [id] | | Song name that user plays |
+| | | level_type | String | common \| daily \| secret | | Level category |
+| | | booster_name | String | hint \| bomb \| magnet | | Which assist the player needed |
+| | | requirement | String | coin \| ad \| stock | | Resource pressure context |
+
+**Cadence Mapping:** `strategy.powerup` (Tier 2)
+
+---
+
+### M8 — `[NCT]` song_revive_impression
+
+| No | Event Name | Event Parameter name | Value Type | Parameter Value | Trigger Logic (Description) | Description |
+|----|-----------|---------------------|-----------|----------------|---------------------------|-------------|
+| 8 | song_revive_impression | | | | Triggered when the Out-of-Lives popup is shown. | Strong frustration trigger — player ran out of all lives. |
+| | | level_id | String | [id] | | Current level ID |
+| | | song_id | String | [id] | | Song name that user plays |
+| | | level_type | String | common \| daily \| secret | | Level category |
+| | | progress | Integer | 0–100 | | Completion rate at time of death |
+| | | count | Integer | [number] | | Times shown in this session. count > 1 = repeated deaths. |
+
+**Cadence Mapping:** `meta.frustration_trigger` (Tier 3)
+
+---
+
+### M9 — `[NCT]` song_revive_click
+
+| No | Event Name | Event Parameter name | Value Type | Parameter Value | Trigger Logic (Description) | Description |
+|----|-----------|---------------------|-----------|----------------|---------------------------|-------------|
+| 9 | song_revive_click | | | | Triggered when user clicks to revive. | Effort/intent to continue despite failure. |
+| | | level_id | String | [id] | | Current level ID |
+| | | song_id | String | [id] | | Song name that user plays |
+| | | level_type | String | common \| daily \| secret | | Level category |
+| | | progress | Integer | 0–100 | | Completion rate at time of click |
+| | | location | String | out_of_live \| are_you_sure | | UX point where revive was clicked |
+| | | count | Integer | [number] | | Times revive clicked in this session |
+
+**Cadence Mapping:** `meta.revive_attempt` (Tier 3)
+
+---
+
+### M10 — `[NCT]` song_revive_success
+
+| No | Event Name | Event Parameter name | Value Type | Parameter Value | Trigger Logic (Description) | Description |
+|----|-----------|---------------------|-----------|----------------|---------------------------|-------------|
+| 10 | song_revive_success | | | | Triggered when user passes revive requirement and game returns to action phase. | Actual survival continuation. |
+| | | level_id | String | [id] | | Current level ID |
+| | | song_id | String | [id] | | Song name that user plays |
+| | | level_type | String | common \| daily \| secret | | Level category |
+| | | requirement | String | coin \| ad | | How the revive was paid for |
+| | | progress | Integer | 0–100 | | Completion rate at time of revive |
+| | | location | String | out_of_live \| are_you_sure | | UX point where revive happened |
+| | | count | Integer | [number] | | Times revived in this session |
+
+**Cadence Mapping:** `meta.revive_success` (Tier 3)
+
+---
+
+## Should Have Events
+
+### S1 — `[NEW]` combo_break
+
+| No | Event Name | Event Parameter name | Value Type | Parameter Value | Trigger Logic (Description) | Description |
+|----|-----------|---------------------|-----------|----------------|---------------------------|-------------|
+| 11 | combo_break | | | | Trigger when a combo streak of 2+ is broken by a miss or timeout. | Skill pattern signal — combo length reveals player skill. |
+| | | level_id | String | [id] | | Current level ID |
+| | | song_id | String | [id] | | Song name that user plays |
+| | | combo_length | Integer | [count] | | Length of the combo that just broke (minimum 2) |
+| | | move_index | Integer | [sequential] | | Move index when the combo broke |
+| | | cause | String | miss \| timeout \| booster | | What broke the combo |
+| | | progress | Integer | 0–100 | | Completion rate when combo broke |
+
+**Cadence Mapping:** `strategy.sequence_match` (Tier 2), `move.waste` (Tier 0 on miss/timeout)
+
+---
+
+### S2 — `[NEW]` wrong_tap
+
+| No | Event Name | Event Parameter name | Value Type | Parameter Value | Trigger Logic (Description) | Description |
+|----|-----------|---------------------|-----------|----------------|---------------------------|-------------|
+| 12 | wrong_tap | | | | Trigger when the player taps an area that is not a valid interactive tile. Does NOT include tile_tap misses. | Raw input noise — confusion or panic indicator. |
+| | | level_id | String | [id] | | Current level ID |
+| | | song_id | String | [id] | | Song name that user plays |
+| | | move_index | Integer | [sequential] | | Last tile_tap move_index (wrong taps don't increment) |
+| | | target | String | empty \| locked_tile \| ui_element \| cooldown_tile | | What the player tapped |
+| | | tap_time | Float | [seconds] | | Time elapsed since level start |
+
+**Cadence Mapping:** `input.rejected` (Tier 4)
+
+---
+
+### S3 — `[NEW]` move_efficiency_snapshot
+
+| No | Event Name | Event Parameter name | Value Type | Parameter Value | Trigger Logic (Description) | Description |
+|----|-----------|---------------------|-----------|----------------|---------------------------|-------------|
+| 13 | move_efficiency_snapshot | | | | Trigger every N moves (configurable, default: 5) during action phase. | Mid-session performance health check. |
+| | | level_id | String | [id] | | Current level ID |
+| | | song_id | String | [id] | | Song name that user plays |
+| | | move_index | Integer | [sequential] | | Current move number |
+| | | total_taps | Integer | [count] | | Total taps so far |
+| | | perfect_taps | Integer | [count] | | Perfect taps so far |
+| | | good_taps | Integer | [count] | | Good taps so far |
+| | | miss_taps | Integer | [count] | | Miss taps so far |
+| | | current_efficiency | Float | 0.0–1.0 | | Running accuracy: (perfect + good) / total_taps |
+| | | avg_inter_move_time | Float | [seconds] | | Average time between taps over last N moves |
+| | | progress | Integer | 0–100 | | Completion rate at this snapshot |
+| | | hearts_remaining | Integer | [count] | | Hearts remaining |
+| | | boosters_used_so_far | Integer | [count] | | Total boosters used to this point |
+| | | elapsed_time | Float | [seconds] | | Time since level start |
+
+**Cadence Mapping:** `resource.efficiency` (Tier 0), `tempo.interval` (Tier 1)
+
+---
+
+### S4 — `[NEW]` song_input_summary
+
+| No | Event Name | Event Parameter name | Value Type | Parameter Value | Trigger Logic (Description) | Description |
+|----|-----------|---------------------|-----------|----------------|---------------------------|-------------|
+| 14 | song_input_summary | | | | Trigger once at song_result time. Aggregates input metrics for the completed session. | Input quality summary for skill model. |
+| | | level_id | String | [id] | | Current level ID |
+| | | song_id | String | [id] | | Song name that user plays |
+| | | total_taps | Integer | [count] | | Total tile_tap events |
+| | | perfect_count | Integer | [count] | | Taps with result = perfect |
+| | | good_count | Integer | [count] | | Taps with result = good |
+| | | miss_count | Integer | [count] | | Taps with result = miss |
+| | | wrong_tap_count | Integer | [count] | | Total wrong_tap events |
+| | | max_combo | Integer | [count] | | Longest combo achieved |
+| | | avg_combo_length | Float | [number] | | Average combo length across all combos |
+| | | avg_inter_move_time | Float | [seconds] | | Mean time between taps |
+| | | inter_move_time_stddev | Float | [seconds] | | Standard deviation of inter-move time. High = erratic tempo. |
+| | | idle_count | Integer | [count] | | Number of idle_detected events |
+| | | total_idle_time | Float | [seconds] | | Cumulative idle time |
+| | | longest_idle | Float | [seconds] | | Longest single idle period — peak confusion moment |
+
+**Cadence Mapping:** `input.accuracy` (Tier 4), `tempo.hesitation` (Tier 1), `input.rejected` (Tier 4)
+
+---
+
+### S5 — `[NCT]` song_booster_click
+
+| No | Event Name | Event Parameter name | Value Type | Parameter Value | Trigger Logic (Description) | Description |
+|----|-----------|---------------------|-----------|----------------|---------------------------|-------------|
+| 15 | song_booster_click | | | | Triggered every time user clicks to use a booster (may not succeed). | Intent to seek help — even if blocked by economy. |
+| | | level_id | String | [id] | | Current level ID |
+| | | song_id | String | [id] | | Song name that user plays |
+| | | booster_name | String | hint \| bomb \| magnet | | Which assist requested |
+| | | requirement | String | coin \| ad \| stock | | coin when broke = economy pressure + desperation |
+| | | level_type | String | common \| daily \| secret | | Level category |
+
+**Cadence Mapping:** `strategy.powerup_attempt` (Tier 2)
+
+---
+
+### S6 — `[NCT]` level_streak_update
+
+| No | Event Name | Event Parameter name | Value Type | Parameter Value | Trigger Logic (Description) | Description |
+|----|-----------|---------------------|-----------|----------------|---------------------------|-------------|
+| 16 | level_streak_update | | | | Trigger whenever there is an update from Level Streak. | Win/loss momentum — feeds StreakDamperRule. |
+| | | milestone | Integer | 1 \| 2 \| 3 | | Milestone of level streak |
+| | | status | String | active \| reset | | Whether milestone reached or streak broken |
+
+**Cadence Mapping:** `meta.streak_milestone` / `meta.streak_reset` (Tier 3)
+
+---
+
+## Signal Flow Diagram
+
+```
+tile_tap ─────────► MoveExecuted      → FlowDetector: efficiency window
+                  ► MoveOptimal       → FlowDetector: efficiency window
+                  ► MoveWaste         → SessionAnalyzer: FrustrationScore
+                  ► InterMoveInterval → FlowDetector: tempo window
+                  ► SequenceMatch     → SessionAnalyzer: SequenceMatchRate
+                  ► InputAccuracy     → SessionAnalyzer: running accuracy
+
+heart_lost ───────► MoveWaste         → SessionAnalyzer: FrustrationScore
+                  ► InputRejected     → FlowDetector: engagement window (push 0)
+                  ► FrustrationTrigger→ FrustrationReliefRule
+
+level_pause ──────► PauseTriggered    → FlowDetector: engagement window (push 0)
+                                      → SessionAnalyzer: EngagementScore penalty
+
+idle_detected ────► HesitationTime    → FlowDetector: tempo score
+                                      → SessionAnalyzer: HesitationTime
+
+combo_break ──────► SequenceMatch     → SessionAnalyzer: SequenceMatchRate
+                  ► MoveWaste         → SessionAnalyzer (on miss/timeout)
+
+wrong_tap ────────► InputRejected     → FlowDetector: engagement window (push 0)
+
+song_booster_* ──► PowerUpUsed       → SessionAnalyzer: PowerUpsUsed
+
+song_revive_* ───► meta.*            → FrustrationReliefRule, AdjustmentContext
+
+song_result ──────► ResourceEfficiency→ Glicko-2 update, AdjustmentEngine
+(+ move counts)   ► SessionOutcome    → PlayerModel skill rating
+```
 
 ---
 
 ## Implementation Checklist
 
-| Phase | Priority | Events to Wire | Cadence APIs | Status |
-|-------|----------|---------------|-------------|--------|
-| **Phase 1** | 🔴 P0 | `song_start`, `song_result` | `BeginSession()`, `EndSession()`, `RecordSignal(ProgressDelta)`, `RecordSignal(InputAccuracy)` | TODO |
-| **Phase 2** | 🟡 P1 | `song_booster_success`, `song_revive_impression`, `song_revive_click`, `song_revive_success` | `RecordSignal(PowerUpUsed)`, `RecordSignal(meta.frustration_trigger)`, `RecordSignal(meta.revive_*)` | TODO |
-| **Phase 3** | 🔵 P2 | `song_start.attempt/play_type`, `song_booster_click`, `level_streak_update`, booster counts from `song_result` | `RecordSignal(AttemptNumber)`, `RecordSignal(meta.streak*)`, `RecordSignal(InterMoveInterval)` | TODO |
-| **Phase 4** | 🟢 P3 | `item_earned`, `item_spent`, `booster_update`, user properties | `RecordSignal(ResourceStored)`, player profile enrichment | TODO |
+| Phase | Priority | Events | New / Existing | Status |
+|-------|----------|--------|---------------|--------|
+| 1 | Must Have | song_start + `par_moves`, song_result + `actual_moves`/`par_moves` | Existing + new params | TODO |
+| 2 | Must Have | tile_tap | **NEW** | TODO |
+| 3 | Must Have | heart_lost | **NEW** | TODO |
+| 4 | Must Have | level_pause | **NEW** | TODO |
+| 5 | Must Have | idle_detected | **NEW** | TODO |
+| 6 | Must Have | song_booster_success | Existing | TODO |
+| 7 | Must Have | song_revive_impression, song_revive_click, song_revive_success | Existing | TODO |
+| 8 | Should Have | combo_break | **NEW** | TODO |
+| 9 | Should Have | wrong_tap | **NEW** | TODO |
+| 10 | Should Have | move_efficiency_snapshot | **NEW** | TODO |
+| 11 | Should Have | song_input_summary | **NEW** | TODO |
+| 12 | Should Have | song_booster_click | Existing | TODO |
+| 13 | Should Have | level_streak_update | Existing | TODO |
 
 ---
 
 ## Summary
 
-| Priority | Event Count | Purpose |
-|----------|-------------|---------|
-| 🔴 **P0 CRITICAL** | 2 events | Session open/close — DDA cannot function without these |
-| 🟡 **P1 HIGH** | 4 events | In-session flow detection — booster use, revive behavior |
-| 🔵 **P2 MEDIUM** | 6 signals (from 4 events) | Between-session model enrichment — retry, streak, tempo |
-| 🟢 **P3 LOW** | 5 events + 2 user properties | Economy context and profile enrichment — optional |
-| ⚪ **P4 SKIP** | ~50+ events | Ads, IAP, navigation, FTUE, cosmetics, content metadata — not wired to DDA |
+| Priority | Event Count | New / Existing | Purpose |
+|----------|-------------|---------------|---------|
+| **Must Have** | 10 events (4 new + 6 existing) | tile_tap, heart_lost, level_pause, idle_detected + session lifecycle & revive/booster | Core DDA pipeline — session boundaries, real-time flow detection, frustration signals |
+| **Should Have** | 6 events (4 new + 2 existing) | combo_break, wrong_tap, move_efficiency_snapshot, song_input_summary + booster click & streak | Enrichment — skill patterns, input quality, mid-session health checks |
+
+---
+
+## Minimum Viable DDA
+
+If you can only implement the absolute minimum, these **3 events** make the DDA functional:
+
+1. **song_start** (existing) — opens the session
+2. **tile_tap** (new) — feeds all 5 signal tiers from a single event
+3. **song_result** (existing) — closes the session and triggers Glicko-2 update
+
+Everything else improves accuracy, but `tile_tap` alone gives the FlowDetector enough data to classify Flow, Boredom, Anxiety, and Frustration in real-time.
+
+---
+
+## Volume Considerations
+
+`tile_tap` fires on every player interaction — potentially hundreds per session. If event volume is a concern:
+
+- **For Cadence runtime:** No concern. Signals go into a local ring buffer (default 512 entries), not a network call.
+- **For analytics backend:** Batch tile_tap into chunks of 5–10, or use `move_efficiency_snapshot` as a lower-volume alternative.
+- **For debugging:** Enable `FileSignalStorage` to persist full signal logs locally. Use the Signal Replay editor window to replay sessions.
