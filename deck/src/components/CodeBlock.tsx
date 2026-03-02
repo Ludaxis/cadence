@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 
@@ -9,8 +10,8 @@ interface Props {
 const keywords = ['using', 'var', 'new', 'void', 'public', 'private', 'class', 'protected', 'override', 'static', 'readonly', 'const', 'return', 'if', 'else', 'true', 'false', 'null', 'this', 'async', 'await'];
 const types = ['DDAEngine', 'SignalKey', 'AdjustmentResult', 'FlowState', 'PlayerModel', 'GameplaySignals', 'SignalTier', 'string', 'int', 'float', 'bool', 'double', 'void', 'IDisposable', 'Action', 'MonoBehaviour'];
 
-function highlightLine(line: string): (string | JSX.Element)[] {
-  const parts: (string | JSX.Element)[] = [];
+function highlightLine(line: string): (string | ReactNode)[] {
+  const parts: (string | ReactNode)[] = [];
   // Simple comment check
   const commentIdx = line.indexOf('//');
   const code = commentIdx >= 0 ? line.slice(0, commentIdx) : line;

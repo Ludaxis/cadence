@@ -3,9 +3,17 @@ import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
+import Link from '@mui/material/Link';
 import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
 import SlideContainer from '../components/SlideContainer';
+
+const REPO = 'https://github.com/Ludaxis/cadence';
+
+const docs = [
+  { label: 'Product Requirements (PRD)', path: 'docs/cadence-prd.md' },
+  { label: 'Event Mapping & Tracking', path: 'docs/dda-event-mapping.md' },
+];
 
 const metrics = [
   { label: 'Signal Tiers', value: '5' },
@@ -100,6 +108,9 @@ export default function SummarySlide() {
         <Button
           variant="outlined"
           size="large"
+          href={REPO}
+          target="_blank"
+          rel="noopener"
           sx={{
             px: 5,
             py: 1.5,
@@ -121,9 +132,29 @@ export default function SummarySlide() {
         >
           Explore on GitHub →
         </Button>
+
+        <Box sx={{ display: 'flex', gap: 3, justifyContent: 'center', mt: 3 }}>
+          {docs.map((d) => (
+            <Link
+              key={d.path}
+              href={`${REPO}/blob/main/${d.path}`}
+              target="_blank"
+              rel="noopener"
+              sx={{
+                color: 'text.secondary',
+                fontSize: '0.82rem',
+                textDecorationColor: 'rgba(255,255,255,0.15)',
+                '&:hover': { color: 'primary.main' },
+              }}
+            >
+              {d.label}
+            </Link>
+          ))}
+        </Box>
+
         <Typography
           variant="body2"
-          sx={{ color: 'rgba(255,255,255,0.3)', mt: 2, fontSize: '0.8rem' }}
+          sx={{ color: 'rgba(255,255,255,0.3)', mt: 3, fontSize: '0.8rem' }}
         >
           by Ludaxis
         </Typography>

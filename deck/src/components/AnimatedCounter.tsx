@@ -1,4 +1,5 @@
-import { useRef, ComponentProps } from 'react';
+import { useRef } from 'react';
+import type { ComponentProps } from 'react';
 import Typography from '@mui/material/Typography';
 import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
