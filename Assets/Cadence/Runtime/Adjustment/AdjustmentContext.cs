@@ -11,6 +11,11 @@ namespace Cadence
         public List<SessionHistoryEntry> RecentHistory;
         public float SessionGapDays;
         public float TimeSinceLastAdjustment;
+        public LevelType LevelType;
+        public LevelTypeConfig LevelTypeConfig;
+        public float SawtoothMultiplier;
+        public int CurrentLevelIndex;
+        public PlayerArchetypeReading ArchetypeReading;
 
         /// <summary>
         /// Counts consecutive outcomes of the same type from most recent history.

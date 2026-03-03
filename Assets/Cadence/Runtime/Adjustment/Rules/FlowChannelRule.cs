@@ -18,7 +18,11 @@ namespace Cadence.Rules
 
         public bool IsApplicable(AdjustmentContext context)
         {
-            return context.Profile != null && context.Profile.HasSufficientData;
+            if (context.Profile == null || !context.Profile.HasSufficientData)
+                return false;
+            if (context.LevelTypeConfig != null && !context.LevelTypeConfig.DDAEnabled)
+                return false;
+            return true;
         }
 
         public void Evaluate(AdjustmentContext context, AdjustmentProposal proposal)
@@ -34,13 +38,17 @@ namespace Cadence.Rules
             float direction;
             if (winRate < minWR)
             {
-                // Player losing too much — make easier (reduce difficulty params)
                 distance = minWR - winRate;
                 direction = -1f;
             }
             else
             {
-                // Player winning too much — make harder (increase difficulty params)
+                // Upward adjustment blocked for Breather-type levels or at-risk archetypes
+                if (context.LevelTypeConfig != null && !context.LevelTypeConfig.AllowUpwardAdjustment)
+                    return;
+                if (ArchetypeAdjustmentStrategy.ShouldBlockUpwardAdjustment(
+                    context.ArchetypeReading.Primary))
+                    return;
                 distance = winRate - maxWR;
                 direction = 1f;
             }
@@ -50,15 +58,31 @@ namespace Cadence.Rules
                 ? _config.DifficultyAdjustmentCurve.Evaluate(Mathf.Clamp01(distance))
                 : distance;
 
+            // Scale by level type adjustment scale (Boss=0.3x, Breather=0.5x, etc.)
+            float typeScale = context.LevelTypeConfig != null
+                ? context.LevelTypeConfig.AdjustmentScale : 1f;
+            magnitude *= typeScale;
+
+            // Scale by player archetype modifier
+            magnitude *= ArchetypeAdjustmentStrategy.GetAdjustmentScaleModifier(
+                context.ArchetypeReading.Primary);
+
             if (context.LevelParameters == null) return;
 
-            // Apply proportional delta to all level parameters
+            // Determine if we should prioritize the primary parameter
+            string primaryKey = context.LevelTypeConfig?.PrimaryParameterKey;
+
             foreach (var kvp in context.LevelParameters)
             {
                 float current = kvp.Value;
                 if (current <= 0f) continue;
 
-                float delta = current * magnitude * direction * 0.1f;
+                float paramMagnitude = magnitude;
+                // Primary parameter gets full adjustment, others get half
+                if (primaryKey != null && kvp.Key != primaryKey)
+                    paramMagnitude *= 0.5f;
+
+                float delta = current * paramMagnitude * direction * 0.1f;
                 proposal.Deltas.Add(new ParameterDelta
                 {
                     ParameterKey = kvp.Key,

@@ -44,6 +44,12 @@ namespace Cadence
                 }
             }
 
+            // Apply sawtooth multiplier: scale all deltas toward the target multiplier
+            if (context.SawtoothMultiplier != 0f && context.SawtoothMultiplier != 1f)
+            {
+                ApplySawtoothScaling(proposal, context.SawtoothMultiplier);
+            }
+
             // Clamp all deltas
             float maxDelta = _config != null ? _config.MaxDeltaPerAdjustment : 0.15f;
             ClampDeltas(proposal, maxDelta);
@@ -85,6 +91,19 @@ namespace Cadence
             if (_lastAdjustmentTime.TryGetValue(paramKey, out float lastTime))
                 return currentTime - lastTime < cooldown;
             return false;
+        }
+
+        private static void ApplySawtoothScaling(AdjustmentProposal proposal, float multiplier)
+        {
+            // Bias each parameter's proposed value toward what the sawtooth curve suggests.
+            // multiplier > 1 = harder cycle point, < 1 = easier cycle point.
+            // We blend: final = proposed * multiplier
+            for (int i = 0; i < proposal.Deltas.Count; i++)
+            {
+                var delta = proposal.Deltas[i];
+                delta.ProposedValue *= multiplier;
+                proposal.Deltas[i] = delta;
+            }
         }
 
         private static void ClampDeltas(AdjustmentProposal proposal, float maxDelta)

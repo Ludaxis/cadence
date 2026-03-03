@@ -7,6 +7,7 @@ namespace Cadence
     {
         // Outcome
         public SessionOutcome Outcome;
+        public LevelType LevelType;
         public float Duration;
         public int TotalMoves;
         public int TotalSignals;

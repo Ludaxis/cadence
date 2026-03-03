@@ -15,6 +15,9 @@ namespace Cadence
         public bool EnableSignalStorage = true;
         public int MaxStoredSessions = 50;
 
+        [Header("Scheduling")]
+        public SawtoothCurveConfig SawtoothCurveConfig;
+
         [Header("Global")]
         public bool EnableMidSessionDetection = true;
         public bool EnableBetweenSessionAdjustment = true;

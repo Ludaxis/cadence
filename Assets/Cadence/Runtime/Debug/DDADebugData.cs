@@ -16,5 +16,7 @@ namespace Cadence
         public SessionSummary LastSessionSummary;
         public AdjustmentProposal LastProposal;
         public Dictionary<string, float> CurrentLevelParams;
+        public LevelType CurrentLevelType;
+        public PlayerArchetypeReading ArchetypeReading;
     }
 }

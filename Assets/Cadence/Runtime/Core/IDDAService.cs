@@ -6,6 +6,8 @@ namespace Cadence
     {
         // Session lifecycle
         void BeginSession(string levelId, Dictionary<string, float> levelParameters);
+        void BeginSession(string levelId, Dictionary<string, float> levelParameters,
+            LevelType type);
         void EndSession(SessionOutcome outcome);
         bool IsSessionActive { get; }
 
@@ -22,6 +24,10 @@ namespace Cadence
 
         // Player profile
         PlayerSkillProfile PlayerProfile { get; }
+        PlayerArchetypeReading CurrentArchetype { get; }
+
+        // Difficulty scheduling
+        float GetTargetMultiplier(int levelIndex);
 
         // Debug
         DDADebugData GetDebugSnapshot();

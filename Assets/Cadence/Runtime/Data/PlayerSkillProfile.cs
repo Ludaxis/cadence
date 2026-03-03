@@ -36,5 +36,6 @@ namespace Cadence
         public float Duration;
         public int Moves;
         public long TimestampUtcTicks;
+        public byte LevelTypeByte;
     }
 }

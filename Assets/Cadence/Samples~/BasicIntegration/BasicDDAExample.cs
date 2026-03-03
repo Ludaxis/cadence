@@ -19,9 +19,10 @@ namespace Cadence.Samples
         }
 
         /// <summary>Call when a level begins.</summary>
-        public void OnLevelStart(string levelId, Dictionary<string, float> levelParams)
+        public void OnLevelStart(string levelId, Dictionary<string, float> levelParams,
+            LevelType levelType = LevelType.Standard)
         {
-            _dda.BeginSession(levelId, levelParams);
+            _dda.BeginSession(levelId, levelParams, levelType);
         }
 
         /// <summary>Call every frame during gameplay.</summary>

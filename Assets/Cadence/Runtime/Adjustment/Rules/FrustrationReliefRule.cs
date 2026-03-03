@@ -16,6 +16,8 @@ namespace Cadence.Rules
 
         public bool IsApplicable(AdjustmentContext context)
         {
+            if (context.LevelTypeConfig != null && !context.LevelTypeConfig.DDAEnabled)
+                return false;
             float threshold = _config != null ? _config.FrustrationReliefThreshold : 0.7f;
             return context.LastSession.FrustrationScore > threshold ||
                    context.LastFlowReading.State == FlowState.Frustration;
@@ -29,6 +31,18 @@ namespace Cadence.Rules
 
             // Base ease amount scales with severity
             float easeAmount = Mathf.Lerp(0.05f, 0.15f, severity);
+
+            // Scale by level type adjustment scale (Boss=0.3x reduces relief)
+            float typeScale = context.LevelTypeConfig != null
+                ? context.LevelTypeConfig.AdjustmentScale : 1f;
+            easeAmount *= typeScale;
+
+            // ChurnRisk and StrugglingLearner get MORE aggressive relief (inverse scaling)
+            var archetype = context.ArchetypeReading.Primary;
+            if (archetype == PlayerArchetype.ChurnRisk)
+                easeAmount *= 1.5f;
+            else if (archetype == PlayerArchetype.StrugglingLearner)
+                easeAmount *= 1.3f;
 
             if (context.LevelParameters == null) return;
 

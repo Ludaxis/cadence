@@ -56,7 +56,8 @@ namespace Cadence
                 Outcome = actualScore,
                 Duration = summary.Duration,
                 Moves = summary.TotalMoves,
-                TimestampUtcTicks = DateTime.UtcNow.Ticks
+                TimestampUtcTicks = DateTime.UtcNow.Ticks,
+                LevelTypeByte = (byte)summary.LevelType
             });
 
             while (_profile.RecentHistory.Count > (_config != null

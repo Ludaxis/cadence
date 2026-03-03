@@ -13,6 +13,8 @@ namespace Cadence
         private readonly IFlowDetector _flowDetector;
         private readonly AdjustmentEngine _adjustmentEngine;
         private readonly ISignalStorage _storage;
+        private readonly IDifficultyScheduler _scheduler;
+        private readonly IPlayerProfiler _profiler;
 
         private bool _sessionActive;
         private string _currentLevelId;
@@ -20,10 +22,14 @@ namespace Cadence
         private float _sessionStartTime;
         private SessionSummary _lastSessionSummary;
         private AdjustmentProposal _lastProposal;
+        private LevelType _currentLevelType;
+        private LevelTypeConfig _currentLevelTypeConfig;
+        private PlayerArchetypeReading _currentArchetype;
 
         public bool IsSessionActive => _sessionActive;
         public FlowReading CurrentFlow => _flowDetector.CurrentReading;
         public PlayerSkillProfile PlayerProfile => _playerModel.Profile;
+        public PlayerArchetypeReading CurrentArchetype => _currentArchetype;
 
         public DDAService(DDAConfig config, ISignalStorage storage = null)
         {
@@ -36,9 +42,21 @@ namespace Cadence
             _flowDetector = new FlowDetector(config != null ? config.FlowDetectorConfig : null);
             _adjustmentEngine = new AdjustmentEngine(config != null ? config.AdjustmentEngineConfig : null);
             _storage = storage;
+
+            // Create difficulty scheduler if sawtooth config is provided
+            if (config != null && config.SawtoothCurveConfig != null)
+                _scheduler = new DifficultyScheduler(config.SawtoothCurveConfig);
+
+            _profiler = new PlayerProfiler();
         }
 
         public void BeginSession(string levelId, Dictionary<string, float> levelParameters)
+        {
+            BeginSession(levelId, levelParameters, LevelType.Standard);
+        }
+
+        public void BeginSession(string levelId, Dictionary<string, float> levelParameters,
+            LevelType type)
         {
             if (_sessionActive)
             {
@@ -47,6 +65,8 @@ namespace Cadence
             }
 
             _currentLevelId = levelId;
+            _currentLevelType = type;
+            _currentLevelTypeConfig = LevelTypeDefaults.GetDefaults(type);
             _currentLevelParams = levelParameters != null
                 ? new Dictionary<string, float>(levelParameters)
                 : new Dictionary<string, float>();
@@ -85,6 +105,7 @@ namespace Cadence
             // Analyze the session
             _lastSessionSummary = _analyzer.Analyze(_collector.CurrentBatch);
             _lastSessionSummary.Outcome = outcome;
+            _lastSessionSummary.LevelType = _currentLevelType;
 
             // Update player model
             _playerModel.UpdateFromSession(_lastSessionSummary);
@@ -116,8 +137,27 @@ namespace Cadence
 
         public AdjustmentProposal GetProposal(Dictionary<string, float> nextLevelParameters)
         {
+            return GetProposal(nextLevelParameters, _currentLevelType, -1);
+        }
+
+        public AdjustmentProposal GetProposal(Dictionary<string, float> nextLevelParameters,
+            LevelType nextLevelType, int nextLevelIndex = -1)
+        {
             if (_config != null && !_config.EnableBetweenSessionAdjustment)
                 return null;
+
+            var typeConfig = LevelTypeDefaults.GetDefaults(nextLevelType);
+
+            // Tutorial levels skip DDA entirely
+            if (!typeConfig.DDAEnabled)
+                return new AdjustmentProposal { Timing = AdjustmentTiming.BeforeNextLevel };
+
+            float sawtoothMult = 1f;
+            if (_scheduler != null && nextLevelIndex >= 0)
+                sawtoothMult = _scheduler.GetTargetMultiplier(nextLevelIndex);
+
+            // Classify player archetype
+            _currentArchetype = _profiler.Classify(_playerModel.Profile, _lastSessionSummary);
 
             var context = new AdjustmentContext
             {
@@ -129,11 +169,21 @@ namespace Cadence
                     : new Dictionary<string, float>(),
                 RecentHistory = _playerModel.Profile.RecentHistory,
                 SessionGapDays = _lastSessionSummary.SessionGapDays,
-                TimeSinceLastAdjustment = Time.unscaledTime
+                TimeSinceLastAdjustment = Time.unscaledTime,
+                LevelType = nextLevelType,
+                LevelTypeConfig = typeConfig,
+                SawtoothMultiplier = sawtoothMult,
+                CurrentLevelIndex = nextLevelIndex,
+                ArchetypeReading = _currentArchetype
             };
 
             _lastProposal = _adjustmentEngine.Evaluate(context);
             return _lastProposal;
+        }
+
+        public float GetTargetMultiplier(int levelIndex)
+        {
+            return _scheduler != null ? _scheduler.GetTargetMultiplier(levelIndex) : 1f;
         }
 
         public DDADebugData GetDebugSnapshot()
@@ -149,7 +199,9 @@ namespace Cadence
                 Profile = _playerModel.Profile,
                 LastSessionSummary = _lastSessionSummary,
                 LastProposal = _lastProposal,
-                CurrentLevelParams = _currentLevelParams
+                CurrentLevelParams = _currentLevelParams,
+                CurrentLevelType = _currentLevelType,
+                ArchetypeReading = _currentArchetype
             };
         }
 

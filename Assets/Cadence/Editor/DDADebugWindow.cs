@@ -70,6 +70,7 @@ namespace Cadence.Editor
             DrawSessionInfo();
             DrawFlowState();
             DrawPlayerProfile();
+            DrawArchetype();
             DrawLastProposal();
 
             EditorGUILayout.EndScrollView();
@@ -91,6 +92,7 @@ namespace Cadence.Editor
             EditorGUI.indentLevel++;
             EditorGUILayout.Toggle("Active", _snapshot.SessionActive);
             EditorGUILayout.TextField("Level", _snapshot.CurrentLevelId ?? "-");
+            EditorGUILayout.EnumPopup("Level Type", _snapshot.CurrentLevelType);
             EditorGUILayout.FloatField("Time", _snapshot.SessionTime);
             EditorGUILayout.IntField("Signals", _snapshot.TotalSignals);
             EditorGUILayout.IntField("Ring Buffer", _snapshot.RingBufferCount);
@@ -131,6 +133,24 @@ namespace Cadence.Editor
             EditorGUILayout.IntField("Sessions", p.SessionsCompleted);
             EditorGUILayout.FloatField("Avg Efficiency", p.AverageEfficiency);
             EditorGUILayout.FloatField("Win Rate", p.AverageOutcome);
+            EditorGUI.indentLevel--;
+            EditorGUILayout.Space();
+        }
+
+        private void DrawArchetype()
+        {
+            var a = _snapshot.ArchetypeReading;
+            EditorGUILayout.LabelField("Player Archetype", EditorStyles.boldLabel);
+            EditorGUI.indentLevel++;
+            EditorGUILayout.LabelField("Primary",
+                $"{a.Primary} ({a.PrimaryConfidence:P0})");
+            EditorGUILayout.LabelField("Secondary",
+                $"{a.Secondary} ({a.SecondaryConfidence:P0})");
+            EditorGUILayout.Slider("SpeedRunner", a.SpeedRunnerScore, 0f, 1f);
+            EditorGUILayout.Slider("CarefulThinker", a.CarefulThinkerScore, 0f, 1f);
+            EditorGUILayout.Slider("StrugglingLearner", a.StrugglingLearnerScore, 0f, 1f);
+            EditorGUILayout.Slider("BoosterDependent", a.BoosterDependentScore, 0f, 1f);
+            EditorGUILayout.Slider("ChurnRisk", a.ChurnRiskScore, 0f, 1f);
             EditorGUI.indentLevel--;
             EditorGUILayout.Space();
         }

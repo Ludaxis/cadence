@@ -19,6 +19,8 @@ namespace Cadence.Rules
         {
             if (context.RecentHistory == null || context.RecentHistory.Count < 2)
                 return false;
+            if (context.LevelTypeConfig != null && !context.LevelTypeConfig.DDAEnabled)
+                return false;
 
             int lossThreshold = _config != null ? _config.LossStreakThreshold : 3;
             int winThreshold = _config != null ? _config.WinStreakThreshold : 5;
@@ -44,12 +46,17 @@ namespace Cadence.Rules
             {
                 direction = -1f;
                 amount = _config != null ? _config.LossStreakEaseAmount : 0.10f;
-                // Scale with streak length
                 float extra = Mathf.Max(0, lossStreak - lossThreshold) * 0.02f;
                 amount += extra;
             }
             else if (winStreak >= winThreshold)
             {
+                // Upward adjustment blocked for Breather-type levels or at-risk archetypes
+                if (context.LevelTypeConfig != null && !context.LevelTypeConfig.AllowUpwardAdjustment)
+                    return;
+                if (ArchetypeAdjustmentStrategy.ShouldBlockUpwardAdjustment(
+                    context.ArchetypeReading.Primary))
+                    return;
                 direction = 1f;
                 amount = _config != null ? _config.WinStreakHardenAmount : 0.05f;
                 float extra = Mathf.Max(0, winStreak - winThreshold) * 0.01f;
@@ -59,6 +66,15 @@ namespace Cadence.Rules
             {
                 return;
             }
+
+            // Scale by level type adjustment scale
+            float typeScale = context.LevelTypeConfig != null
+                ? context.LevelTypeConfig.AdjustmentScale : 1f;
+            amount *= typeScale;
+
+            // Scale by player archetype modifier
+            amount *= ArchetypeAdjustmentStrategy.GetAdjustmentScaleModifier(
+                context.ArchetypeReading.Primary);
 
             if (context.LevelParameters == null) return;
 
