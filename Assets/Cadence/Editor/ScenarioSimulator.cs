@@ -23,12 +23,14 @@ namespace Cadence.Editor
         };
         private bool[] _personaEnabled;
         private PlayerPersona[] _personas;
+        private bool _showBaseline = true;
 
         // ════════════════════════════════════════════════════════════
         //  SIMULATION RESULTS
         // ════════════════════════════════════════════════════════════
 
         private List<SimulationRun> _runs = new List<SimulationRun>();
+        private List<SimulationRun> _baselineRuns = new List<SimulationRun>();
         private float[] _sawtoothMultipliers;
         private LevelType[] _sawtoothTypes;
         private bool _hasResults;
@@ -176,6 +178,10 @@ namespace Cadence.Editor
                 EditorGUILayout.EndHorizontal();
             }
 
+            // Baseline toggle
+            EditorGUILayout.Space(8);
+            _showBaseline = EditorGUILayout.Toggle("Show Baseline (No DDA)", _showBaseline);
+
             // Buttons
             EditorGUILayout.Space(12);
             GUI.enabled = _ddaConfig != null;
@@ -286,20 +292,29 @@ namespace Cadence.Editor
         private void DrawWinLoseGraph(float width)
         {
             EditorGUILayout.LabelField("Win/Lose Outcomes", EditorStyles.boldLabel);
-            var rect = GUILayoutUtility.GetRect(width, WinLoseGraphHeight);
+
+            // Combine all runs for row layout: DDA runs first, then baseline
+            var allRuns = new List<SimulationRun>(_runs);
+            allRuns.AddRange(_baselineRuns);
+            int totalRows = allRuns.Count;
+            float graphHeight = Mathf.Max(WinLoseGraphHeight,
+                totalRows > 0 ? totalRows * 12f : WinLoseGraphHeight);
+
+            var rect = GUILayoutUtility.GetRect(width, graphHeight);
             if (Event.current.type != EventType.Repaint) return;
 
             float barWidth = rect.width / _levelCount;
-            foreach (var run in _runs)
+            for (int r = 0; r < allRuns.Count; r++)
             {
+                var run = allRuns[r];
                 var persona = run.Persona;
+                float h = rect.height / totalRows;
+                float y = rect.y + r * h;
+
                 for (int i = 0; i < run.Snapshots.Count; i++)
                 {
                     var snap = run.Snapshots[i];
                     float x = rect.x + i * barWidth;
-                    float h = rect.height / _runs.Count;
-                    int runIdx = _runs.IndexOf(run);
-                    float y = rect.y + runIdx * h;
 
                     var color = snap.Won
                         ? new Color(persona.Color.r, persona.Color.g, persona.Color.b, 0.7f)
@@ -334,6 +349,17 @@ namespace Cadence.Editor
             EditorGraphUtility.DrawHorizontalLine(rect, 0.5f, minY, maxY,
                 new Color(1f, 1f, 1f, 0.15f), 1f);
 
+            // Baseline runs (thin, dim)
+            foreach (var run in _baselineRuns)
+            {
+                var values = new float[run.Snapshots.Count];
+                for (int i = 0; i < values.Length; i++)
+                    values[i] = run.Snapshots[i].RollingWinRate;
+                EditorGraphUtility.DrawLineGraph(rect, values, minY, maxY,
+                    run.Persona.Color, 1f);
+            }
+
+            // DDA runs (thick, full color)
             foreach (var run in _runs)
             {
                 var values = new float[run.Snapshots.Count];
@@ -377,6 +403,17 @@ namespace Cadence.Editor
             EditorGraphUtility.DrawHorizontalLine(rect, 1500f, minY, maxY,
                 new Color(1f, 1f, 1f, 0.15f), 1f);
 
+            // Baseline runs (thin, dim — flat at 1500 since no Glicko without DDA)
+            foreach (var run in _baselineRuns)
+            {
+                var values = new float[run.Snapshots.Count];
+                for (int i = 0; i < values.Length; i++)
+                    values[i] = run.Snapshots[i].PlayerRating;
+                EditorGraphUtility.DrawLineGraph(rect, values, minY, maxY,
+                    run.Persona.Color, 1f);
+            }
+
+            // DDA runs (thick, full color)
             foreach (var run in _runs)
             {
                 var values = new float[run.Snapshots.Count];
@@ -428,6 +465,23 @@ namespace Cadence.Editor
             float minY = minVal - pad;
             float maxY = maxVal + pad;
 
+            // Baseline runs (thin, dim — flat since params never change)
+            foreach (var run in _baselineRuns)
+            {
+                var values = new float[run.Snapshots.Count];
+                for (int i = 0; i < values.Length; i++)
+                {
+                    if (run.Snapshots[i].AdjustedParams != null &&
+                        run.Snapshots[i].AdjustedParams.TryGetValue(paramKey, out float v))
+                        values[i] = v;
+                    else
+                        values[i] = i > 0 ? values[i - 1] : _paramEntries[0].Value;
+                }
+                EditorGraphUtility.DrawLineGraph(rect, values, minY, maxY,
+                    run.Persona.Color, 1f);
+            }
+
+            // DDA runs (thick, full color)
             foreach (var run in _runs)
             {
                 var values = new float[run.Snapshots.Count];
@@ -463,7 +517,10 @@ namespace Cadence.Editor
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
 
-            foreach (var run in _runs)
+            var heatmapRuns = new List<SimulationRun>(_runs);
+            heatmapRuns.AddRange(_baselineRuns);
+
+            foreach (var run in heatmapRuns)
             {
                 EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.LabelField(run.Persona.Name, GUILayout.Width(HeatmapLabelWidth));
@@ -492,9 +549,13 @@ namespace Cadence.Editor
             _bottomScroll = EditorGUILayout.BeginScrollView(_bottomScroll,
                 GUILayout.Height(BottomPanelHeight));
 
+            // Merge DDA + baseline runs for the table
+            var allRuns = new List<SimulationRun>(_runs);
+            allRuns.AddRange(_baselineRuns);
+
             // Header row
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
-            DrawSortableHeader("Persona", 0, 120);
+            DrawSortableHeader("Persona", 0, 140);
             DrawSortableHeader("Win Rate", 1, 70);
             DrawSortableHeader("Final Rating", 2, 80);
             DrawSortableHeader("Win Streak", 3, 70);
@@ -506,18 +567,20 @@ namespace Cadence.Editor
             EditorGUILayout.EndHorizontal();
 
             // Data rows
-            if (_sortedRunIndices == null || _sortedRunIndices.Length != _runs.Count)
+            if (_sortedRunIndices == null || _sortedRunIndices.Length != allRuns.Count)
                 RebuildSortIndices();
 
             for (int si = 0; si < _sortedRunIndices.Length; si++)
             {
-                var run = _runs[_sortedRunIndices[si]];
+                int idx = _sortedRunIndices[si];
+                if (idx >= allRuns.Count) continue;
+                var run = allRuns[idx];
                 int total = run.Snapshots.Count;
 
                 EditorGUILayout.BeginHorizontal();
                 var prevBg = GUI.backgroundColor;
                 GUI.backgroundColor = run.Persona.Color;
-                EditorGUILayout.LabelField(run.Persona.Name, GUILayout.Width(120));
+                EditorGUILayout.LabelField(run.Persona.Name, GUILayout.Width(140));
                 GUI.backgroundColor = prevBg;
 
                 EditorGUILayout.LabelField($"{run.OverallWinRate:P0}", GUILayout.Width(70));
@@ -560,16 +623,19 @@ namespace Cadence.Editor
 
         private void RebuildSortIndices()
         {
-            _sortedRunIndices = new int[_runs.Count];
-            for (int i = 0; i < _runs.Count; i++)
+            var allRuns = new List<SimulationRun>(_runs);
+            allRuns.AddRange(_baselineRuns);
+
+            _sortedRunIndices = new int[allRuns.Count];
+            for (int i = 0; i < allRuns.Count; i++)
                 _sortedRunIndices[i] = i;
 
             if (_sortColumn < 0) return;
 
             Array.Sort(_sortedRunIndices, (a, b) =>
             {
-                float va = GetSortValue(_runs[a], _sortColumn);
-                float vb = GetSortValue(_runs[b], _sortColumn);
+                float va = GetSortValue(allRuns[a], _sortColumn);
+                float vb = GetSortValue(allRuns[b], _sortColumn);
                 int cmp = va.CompareTo(vb);
                 return _sortAscending ? cmp : -cmp;
             });
@@ -606,6 +672,7 @@ namespace Cadence.Editor
             }
 
             _runs.Clear();
+            _baselineRuns.Clear();
             _hasResults = false;
 
             // Pre-compute sawtooth curve
@@ -618,13 +685,21 @@ namespace Cadence.Editor
                 _sawtoothTypes[i] = scheduler.GetSuggestedLevelType(i);
             }
 
-            // Run each enabled persona
+            // Run each enabled persona — with DDA and optionally without
             for (int p = 0; p < _personas.Length; p++)
             {
                 if (!_personaEnabled[p]) continue;
-                var run = SimulatePersona(_personas[p], scheduler);
+
+                var run = SimulatePersona(_personas[p], scheduler, useDDA: true);
                 run.ComputeAggregates();
                 _runs.Add(run);
+
+                if (_showBaseline)
+                {
+                    var baseline = SimulatePersona(_personas[p], scheduler, useDDA: false);
+                    baseline.ComputeAggregates();
+                    _baselineRuns.Add(baseline);
+                }
             }
 
             _hasResults = _runs.Count > 0;
@@ -632,10 +707,33 @@ namespace Cadence.Editor
             Repaint();
         }
 
-        private SimulationRun SimulatePersona(PlayerPersona persona, DifficultyScheduler scheduler)
+        private SimulationRun SimulatePersona(PlayerPersona persona,
+            DifficultyScheduler scheduler, bool useDDA)
         {
-            var run = new SimulationRun { Persona = persona };
-            var service = new DDAService(_ddaConfig);
+            // Build a persona copy for baseline labeling
+            var runPersona = useDDA
+                ? persona
+                : new PlayerPersona
+                {
+                    Name = persona.Name + " (No DDA)",
+                    Color = new Color(persona.Color.r, persona.Color.g, persona.Color.b, 0.4f),
+                    BaseWinRate = persona.BaseWinRate,
+                    MeanMoveCount = persona.MeanMoveCount,
+                    MoveCountVariance = persona.MoveCountVariance,
+                    OptimalMoveRatio = persona.OptimalMoveRatio,
+                    MeanSessionTime = persona.MeanSessionTime,
+                    MeanInterMoveTime = persona.MeanInterMoveTime,
+                    BoosterUseRate = persona.BoosterUseRate,
+                    PauseRate = persona.PauseRate,
+                    SkillGrowthRate = persona.SkillGrowthRate,
+                };
+
+            var run = new SimulationRun { Persona = runPersona };
+
+            // DDA service only created when needed
+            DDAService service = useDDA ? new DDAService(_ddaConfig) : null;
+
+            // Same RNG seed for both DDA and baseline so win/lose sequence is comparable
             var rng = new System.Random(persona.Name.GetHashCode() ^ _seed);
 
             // Build initial parameter dictionary
@@ -657,42 +755,59 @@ namespace Cadence.Editor
 
                 bool won = rng.NextDouble() < effectiveWinRate;
 
-                // Begin session
-                service.BeginSession("level_" + i, new Dictionary<string, float>(currentParams), levelType);
-
-                // Inject signals
-                InjectSignals(service, persona, won, rng, i);
-
-                // Simulate elapsed time
-                float elapsedTime = 0.016f * persona.MeanMoveCount;
-                service.Tick(elapsedTime);
-
-                // End session
-                service.EndSession(won ? SessionOutcome.Win : SessionOutcome.Lose);
-
-                // Get flow state from debug snapshot
-                var debug = service.GetDebugSnapshot();
-                var flowState = debug.LastSessionSummary.FrustrationScore > 0.7f
-                    ? FlowState.Frustration
-                    : debug.CurrentFlow.State;
-
-                // Get proposal for next level
-                var nextLevelType = (i + 1 < _levelCount)
-                    ? scheduler.GetSuggestedLevelType(i + 1)
-                    : LevelType.Standard;
-                var proposal = service.GetProposal(
-                    new Dictionary<string, float>(currentParams), nextLevelType, i + 1);
-
-                // Compute adjustment delta
+                FlowState flowState = FlowState.Unknown;
                 float adjustmentDelta = 0f;
-                if (proposal?.Deltas != null)
-                {
-                    foreach (var d in proposal.Deltas)
-                        adjustmentDelta += Mathf.Abs(d.ProposedValue - d.CurrentValue);
-                }
+                float playerRating = 1500f;
+                float playerDeviation = 350f;
 
-                // Apply proposal
-                ApplyProposal(proposal, currentParams);
+                if (useDDA)
+                {
+                    // Full DDA loop
+                    service.BeginSession("level_" + i,
+                        new Dictionary<string, float>(currentParams), levelType);
+
+                    InjectSignals(service, persona, won, rng, i);
+
+                    float elapsedTime = 0.016f * persona.MeanMoveCount;
+                    service.Tick(elapsedTime);
+
+                    service.EndSession(won ? SessionOutcome.Win : SessionOutcome.Lose);
+
+                    var debug = service.GetDebugSnapshot();
+                    flowState = debug.LastSessionSummary.FrustrationScore > 0.7f
+                        ? FlowState.Frustration
+                        : debug.CurrentFlow.State;
+
+                    var nextLevelType = (i + 1 < _levelCount)
+                        ? scheduler.GetSuggestedLevelType(i + 1)
+                        : LevelType.Standard;
+                    var proposal = service.GetProposal(
+                        new Dictionary<string, float>(currentParams), nextLevelType, i + 1);
+
+                    if (proposal?.Deltas != null)
+                    {
+                        foreach (var d in proposal.Deltas)
+                            adjustmentDelta += Mathf.Abs(d.ProposedValue - d.CurrentValue);
+                    }
+
+                    ApplyProposal(proposal, currentParams);
+
+                    var profile = service.PlayerProfile;
+                    playerRating = profile.Rating;
+                    playerDeviation = profile.Deviation;
+                }
+                else
+                {
+                    // Baseline: consume the same RNG calls so sequences stay aligned
+                    // InjectSignals consumes rng for moveCount variance, booster, pause
+                    int moveCount = Mathf.Max(3, Mathf.RoundToInt(
+                        persona.MeanMoveCount +
+                        (float)(rng.NextDouble() * 2 - 1) * persona.MoveCountVariance));
+                    rng.NextDouble(); // booster roll
+                    rng.NextDouble(); // pause roll
+
+                    // Parameters stay fixed at base values — no proposals
+                }
 
                 // Rolling win rate
                 recentOutcomes.Enqueue(won);
@@ -703,16 +818,14 @@ namespace Cadence.Editor
                     if (w) wins++;
                 float rollingWinRate = (float)wins / recentOutcomes.Count;
 
-                // Capture snapshot
-                var profile = service.PlayerProfile;
                 run.Snapshots.Add(new LevelSnapshot
                 {
                     LevelIndex = i,
                     LevelType = levelType,
                     SawtoothMultiplier = multiplier,
                     Won = won,
-                    PlayerRating = profile.Rating,
-                    PlayerDeviation = profile.Deviation,
+                    PlayerRating = playerRating,
+                    PlayerDeviation = playerDeviation,
                     FlowState = flowState,
                     RollingWinRate = rollingWinRate,
                     AdjustedParams = new Dictionary<string, float>(currentParams),
@@ -811,18 +924,22 @@ namespace Cadence.Editor
             var sb = new StringBuilder();
 
             // Header
-            sb.Append("Persona,LevelIndex,LevelType,SawtoothMultiplier,Won,");
+            sb.Append("Persona,DDA,LevelIndex,LevelType,SawtoothMultiplier,Won,");
             sb.Append("PlayerRating,PlayerDeviation,FlowState,RollingWinRate,AdjustmentDelta");
             foreach (var p in _paramEntries)
                 sb.Append("," + p.Key);
             sb.AppendLine();
 
-            // Data
-            foreach (var run in _runs)
+            // Data — DDA runs + baseline runs
+            var allExportRuns = new List<SimulationRun>(_runs);
+            allExportRuns.AddRange(_baselineRuns);
+            foreach (var run in allExportRuns)
             {
                 foreach (var snap in run.Snapshots)
                 {
-                    sb.Append($"{run.Persona.Name},{snap.LevelIndex},{snap.LevelType},");
+                    bool isDDA = !run.Persona.Name.EndsWith("(No DDA)");
+                    string baseName = isDDA ? run.Persona.Name : run.Persona.Name.Replace(" (No DDA)", "");
+                    sb.Append($"{baseName},{(isDDA ? "Yes" : "No")},{snap.LevelIndex},{snap.LevelType},");
                     sb.Append($"{snap.SawtoothMultiplier:F4},{(snap.Won ? 1 : 0)},");
                     sb.Append($"{snap.PlayerRating:F1},{snap.PlayerDeviation:F1},");
                     sb.Append($"{snap.FlowState},{snap.RollingWinRate:F3},{snap.AdjustmentDelta:F4}");
@@ -837,7 +954,7 @@ namespace Cadence.Editor
             }
 
             File.WriteAllText(path, sb.ToString());
-            Debug.Log($"[Scenario Simulator] Exported {_runs.Count} persona runs to: {path}");
+            Debug.Log($"[Scenario Simulator] Exported {allExportRuns.Count} persona runs to: {path}");
         }
 
         // ════════════════════════════════════════════════════════════
