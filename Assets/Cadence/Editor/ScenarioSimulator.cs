@@ -737,7 +737,8 @@ namespace Cadence.Editor
             var rng = new System.Random(persona.Name.GetHashCode() ^ _seed);
 
             // Build initial parameter dictionary
-            var currentParams = BuildParamDict();
+            var baseParams = BuildParamDict();
+            var currentParams = new Dictionary<string, float>(baseParams);
 
             // Rolling win rate window
             var recentOutcomes = new Queue<bool>();
@@ -748,10 +749,26 @@ namespace Cadence.Editor
                 var levelType = scheduler.GetSuggestedLevelType(i);
                 float multiplier = scheduler.GetTargetMultiplier(i);
 
-                // Effective win rate: persona base (+ growth) modulated by sawtooth
-                float effectiveWinRate = Mathf.Clamp(
-                    persona.EffectiveWinRate(i) * (2f - multiplier),
-                    0.05f, 0.95f);
+                // Base effective win rate: persona (+ growth) modulated by sawtooth
+                float effectiveWinRate = persona.EffectiveWinRate(i) * (2f - multiplier);
+
+                // DDA parameter shift: if DDA increased params (easier), boost win rate.
+                // e.g. move_limit 30 → 36 is +20% → adds ~10% to win rate (0.5 sensitivity).
+                // For baseline runs, currentParams == baseParams so shift is 0.
+                float paramShift = 0f;
+                foreach (var kvp in currentParams)
+                {
+                    if (baseParams.TryGetValue(kvp.Key, out float baseVal) &&
+                        Mathf.Abs(baseVal) > 0.001f)
+                    {
+                        paramShift += (kvp.Value - baseVal) / baseVal;
+                    }
+                }
+                if (currentParams.Count > 0)
+                    paramShift /= currentParams.Count;
+                effectiveWinRate *= 1f + paramShift * 0.5f;
+
+                effectiveWinRate = Mathf.Clamp(effectiveWinRate, 0.05f, 0.95f);
 
                 bool won = rng.NextDouble() < effectiveWinRate;
 
