@@ -50,11 +50,16 @@ namespace Cadence.Editor
                 return;
             }
 
-            // Try to find service — game must register it somewhere accessible
+            // Try auto-discovery via CadenceManager
+            if (_service == null && CadenceManager.Instance != null)
+                _service = CadenceManager.Service;
+
             if (_service == null)
             {
                 EditorGUILayout.HelpBox(
-                    "No IDDAService found. Ensure your game registers a DDAService instance.",
+                    "No IDDAService found.\n\n" +
+                    "Either add a CadenceManager to your scene (Cadence > Create Manager in Scene) " +
+                    "or call DDADebugWindow.SetService() from your game code.",
                     MessageType.Warning);
 
                 if (GUILayout.Button("Refresh"))

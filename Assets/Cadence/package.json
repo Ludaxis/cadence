@@ -1,6 +1,6 @@
 {
     "name": "com.ludaxis.cadence",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "displayName": "Cadence - Dynamic Difficulty Adjustment",
     "description": "Game-agnostic DDA SDK for Unity. Signal-based player modeling, real-time flow detection, Glicko-2 skill tracking, and adaptive difficulty proposals.",
     "unity": "2021.3",
@@ -35,6 +35,11 @@
             "displayName": "Advanced Integration",
             "description": "Sawtooth scheduling, player archetypes, and level-type-aware difficulty.",
             "path": "Samples~/AdvancedIntegration"
+        },
+        {
+            "displayName": "Manager Integration",
+            "description": "Simplified workflow using CadenceManager — no manual Tick or persistence code.",
+            "path": "Samples~/ManagerIntegration"
         }
     ],
     "documentationUrl": "https://github.com/Ludaxis/cadence#readme",

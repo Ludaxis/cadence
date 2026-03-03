@@ -21,10 +21,16 @@ namespace Cadence
 
         // Between-session adjustment
         AdjustmentProposal GetProposal(Dictionary<string, float> nextLevelParameters);
+        AdjustmentProposal GetProposal(Dictionary<string, float> nextLevelParameters,
+            LevelType nextLevelType, int nextLevelIndex = -1);
 
         // Player profile
         PlayerSkillProfile PlayerProfile { get; }
         PlayerArchetypeReading CurrentArchetype { get; }
+
+        // Profile serialization
+        string SaveProfile();
+        void LoadProfile(string json);
 
         // Difficulty scheduling
         float GetTargetMultiplier(int levelIndex);

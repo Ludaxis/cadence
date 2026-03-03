@@ -32,6 +32,10 @@ namespace Cadence.Editor
 
         private static void OnSceneGUI(SceneView sceneView)
         {
+            // Auto-discovery via CadenceManager
+            if (_service == null && CadenceManager.Instance != null)
+                _service = CadenceManager.Service;
+
             if (!_enabled || !Application.isPlaying || _service == null) return;
 
             var flow = _service.CurrentFlow;
