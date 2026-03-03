@@ -7,7 +7,7 @@ namespace Cadence.Editor
 {
     public class SetupWizard : EditorWindow
     {
-        private string _targetFolder = "Assets/Cadence/Config";
+        private string _targetFolder = "Assets/Config/Cadence";
         private Vector2 _scrollPos;
 
         // Cached status

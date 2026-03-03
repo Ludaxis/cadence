@@ -601,58 +601,103 @@ dda.RecordSignal("my_game.combo_broken", 1f, SignalTier.DecisionQuality);
 
 Create assets via `Assets > Create > Cadence > ...` or use the Setup Wizard (`Cadence > Setup Wizard`).
 
+> **Odin Inspector:** If [Odin Inspector](https://odininspector.com/) is installed, every config asset gets grouped sections, inline sub-config editing, validation badges, tooltips, and conditional field visibility. Cadence works perfectly without Odin — the enhanced inspectors are a bonus. Check `Cadence > Install Odin Inspector` for details.
+
 ### DDA Config (root)
 
-| Field | Default | Description |
-|-------|---------|-------------|
-| PlayerModelConfig | *(required)* | Glicko-2 skill rating settings |
-| FlowDetectorConfig | *(required)* | Flow state detection thresholds |
-| AdjustmentEngineConfig | *(required)* | Adjustment rule weights and cooldowns |
-| SawtoothCurveConfig | *(optional)* | Difficulty wave scheduling. Null = flat difficulty. |
-| RingBufferCapacity | 512 | Max in-memory signals per session |
-| EnableSignalStorage | true | Persist signals to disk for replay/debugging |
-| MaxStoredSessions | 50 | Max signal files on disk (oldest pruned) |
-| EnableMidSessionDetection | true | Run flow detector every frame |
-| EnableBetweenSessionAdjustment | true | Generate proposals after sessions |
+`Assets > Create > Cadence > DDA Config`
+
+The master configuration. References all sub-configs and controls global toggles.
+
+| Group | Field | Default | What It Does |
+|-------|-------|---------|-------------|
+| **Sub-Configs** | PlayerModelConfig | *(required)* | Glicko-2 skill rating parameters |
+| | FlowDetectorConfig | *(required)* | Real-time flow state detection |
+| | AdjustmentEngineConfig | *(required)* | Difficulty adjustment rules |
+| | SawtoothCurveConfig | *(optional)* | Difficulty wave scheduling. Leave null for flat difficulty. |
+| **Signal Collection** | RingBufferCapacity | `512` | Circular buffer size for in-memory signals. 512 is enough for most levels. |
+| | EnableSignalStorage | `true` | Persist signals to disk as JSON files for replay and debugging |
+| | MaxStoredSessions | `50` | Max signal files kept on disk per level. Oldest pruned first. |
+| **Global Toggles** | EnableMidSessionDetection | `true` | Run the flow detector every frame during gameplay. Disable to save CPU if you only use between-session proposals. |
+| | EnableBetweenSessionAdjustment | `true` | Generate adjustment proposals after `EndSession()`. The primary DDA mechanism. |
 
 ### Player Model Config
 
-| Field | Description |
-|-------|-------------|
-| InitialRating | Starting Glicko-2 rating (default: 1500) |
-| InitialDeviation | Starting uncertainty (default: 350) |
-| InitialVolatility | Starting volatility (default: 0.06) |
-| Tau | System constant controlling volatility change speed |
-| TimeDecayRate | How fast deviation increases during inactivity |
+`Assets > Create > Cadence > Player Model Config`
+
+Maintains a Glicko-2 skill rating for each player. After each session the system updates Rating, Deviation, and Volatility using the full 5-step Glicko-2 algorithm.
+
+| Group | Field | Default | What It Does |
+|-------|-------|---------|-------------|
+| **Initial Values** | InitialRating | `1500` | Starting skill estimate. 1500 = average. Higher = system assumes the player is better initially. |
+| | InitialDeviation | `350` | Starting uncertainty (RD). 350 = brand new, maximum uncertainty. Confidence = `1 - (Deviation / 350)`: 350→0%, 175→50%, 35→90%. |
+| | InitialVolatility | `0.06` | How much the rating can fluctuate between sessions. 0.06 is the Glicko-2 standard. Higher = more swing. Range: 0.01 - 0.15. |
+| **System Constants** | Tau (τ) | `0.5` | Constrains volatility change speed. Lower (0.3-0.5) = conservative. Higher (0.8-1.2) = aggressive. 0.5 recommended for puzzle games. |
+| | ConvergenceEpsilon (ε) | `0.000001` | Precision for the Illinois algorithm volatility search. Default is standard. |
+| **Inactivity Decay** | DeviationDecayPerDay | `5` | RD increase per day of inactivity. At 5 RD/day, after 1 week away deviation grows by 35. Prevents stale ratings from producing overconfident adjustments. |
+| | MaxDeviation | `350` | Upper cap for deviation after time decay. 350 = fully uncertain (same as new player). |
+| **Session History** | MaxHistoryEntries | `20` | Rolling buffer of recent sessions. Used by the Player Profiler for archetype classification and by Streak Damper for streak detection. 20 ≈ 1-2 weeks of daily play. |
 
 ### Flow Detector Config
 
-| Field | Description |
-|-------|-------------|
-| TempoWindowSize | Sliding window size for tempo metrics |
-| EfficiencyWindowSize | Sliding window size for efficiency metrics |
-| EngagementWindowSize | Sliding window size for engagement metrics |
-| BoredomThreshold | Efficiency above this = boredom candidate |
-| AnxietyThreshold | Efficiency below this = anxiety candidate |
-| FrustrationThreshold | Compound score above this = frustration |
-| HysteresisCount | Consecutive readings before state change |
-| WarmupMoves | Minimum moves before detection activates |
+`Assets > Create > Cadence > Flow Detector Config`
+
+Classifies the player into one of 5 flow states every tick: **Flow** (default), **Boredom** (too easy), **Anxiety** (too hard), **Frustration** (overwhelmed), or **Unknown** (warmup period).
+
+| Group | Field | Default | What It Does |
+|-------|-------|---------|-------------|
+| **Sliding Windows** | TempoWindowSize | `8` | Window for inter-move interval tracking → feeds TempoScore. Larger = smoother but slower to react. |
+| | EfficiencyWindowSize | `12` | Window for move optimality tracking → feeds EfficiencyScore (ratio of optimal moves). |
+| | EngagementWindowSize | `20` | Window for engagement events (progress, pauses, rejected inputs) → feeds EngagementScore. |
+| **Flow State Thresholds** | BoredomEfficiencyMin | `0.85` | Efficiency above this (with high tempo) → Boredom. 0.85 = player getting 85%+ moves right. |
+| | BoredomTempoMin | `0.70` | Tempo above this (with high efficiency) → Boredom. 0.7 = very consistent, fast pacing. |
+| | AnxietyEfficiencyMax | `0.30` | Efficiency below this (with low tempo) → Anxiety. 0.3 = only 30% optimal moves. |
+| | AnxietyTempoMax | `0.20` | Tempo below this (with low efficiency) → Anxiety. 0.2 = very erratic pacing. |
+| | FrustrationThreshold | `0.70` | Compound frustration score above this → Frustration. **Checked before Boredom/Anxiety.** Formula: `(1-Efficiency)*0.5 + (1-Tempo)*0.3 + (1-Engagement)*0.2`. |
+| **Stability** | HysteresisCount | `3` | Consecutive ticks at the same state before confirming the transition. Prevents flickering. |
+| | WarmupMoves | `5` | Minimum moves before detection activates. Returns `Unknown` until reached. |
+| | ExponentialAlpha | `0.3` | EMA smoothing factor. Higher = faster response, more noise. Lower = smoother, slower. |
+
+**Detection priority:** Frustration > Boredom > Anxiety > Flow (default).
 
 ### Adjustment Engine Config
 
-| Field | Description |
-|-------|-------------|
-| Rule weights | Per-rule influence on the final proposal |
-| CooldownDuration | Minimum time between adjustments |
-| DampingFactor | Global damping multiplier (0-1) |
+`Assets > Create > Cadence > Adjustment Engine Config`
+
+Four rules evaluated in order after each session. All deltas are clamped by MaxDeltaPerAdjustment, then scaled by the sawtooth multiplier (if configured).
+
+| Group | Field | Default | What It Does |
+|-------|-------|---------|-------------|
+| **Flow Channel Rule** | TargetWinRateMin | `0.30` | Lower bound of healthy win rate. Below this → ease difficulty. Puzzle games: 0.3 - 0.4. |
+| | TargetWinRateMax | `0.70` | Upper bound of healthy win rate. Above this → harden difficulty. Puzzle games: 0.6 - 0.75. |
+| | DifficultyAdjustmentCurve | Linear | Maps distance from band edge (X: 0-1) to adjustment magnitude (Y: 0-1). Use ease-in for gentle-then-aggressive. |
+| **Streak Damper Rule** | LossStreakThreshold | `3` | Consecutive losses before easing kicks in. 3 = lose 3 in a row → ease. |
+| | WinStreakThreshold | `5` | Consecutive wins before hardening. 5 = generous (lets players enjoy success). |
+| | LossStreakEaseAmount | `0.10` | Base easing per parameter (10%). Escalates +2% per additional loss beyond threshold. |
+| | WinStreakHardenAmount | `0.05` | Base hardening per parameter (5%). Intentionally gentler than easing. Escalates +1% per additional win. |
+| **Frustration Relief Rule** | FrustrationReliefThreshold | `0.70` | FrustrationScore above this triggers emergency easing. Severity scales ease from 5% to 15%. ChurnRisk gets 1.5x, StrugglingLearner gets 1.3x. If FlowState == Frustration, timing = MidSession (immediate). |
+| **Cooldown Rule** | GlobalCooldownSeconds | `60` | Minimum seconds between any two proposals. Prevents back-to-back adjustments on quick retries. |
+| | PerParameterCooldownSeconds | `120` | Minimum seconds before the same parameter can be adjusted again. Prevents whipsaw. |
+| **Safety Clamping** | MaxDeltaPerAdjustment | `0.15` | Hard limit: max change as fraction of current value. 0.15 = 15%. A parameter at 20 changes by at most ±3 per proposal. |
+
+**Rule evaluation order:** FlowChannel → StreakDamper → FrustrationRelief → Cooldown (filters).
 
 ### Sawtooth Curve Config
 
-| Field | Description |
-|-------|-------------|
-| WaveLength | Levels per difficulty cycle |
-| PeakMultiplier | Boss level difficulty multiplier |
-| TroughMultiplier | Breather level difficulty multiplier |
+`Assets > Create > Cadence > Sawtooth Curve Config`
+
+Creates repeating difficulty waves modeled after top puzzle games (Candy Crush, Royal Match). Each cycle ramps up to a Boss spike, then drops to a Breather dip.
+
+| Group | Field | Default | What It Does |
+|-------|-------|---------|-------------|
+| **Cycle Shape** | Period | `10` | Levels per cycle. 10 = boss at level 9, breather at 10. Shorter (5-8) = more tension/relief. Longer (15-25) = slower pacing. |
+| | Amplitude | `0.30` | Peak-to-trough range. 0.3 = multiplier varies from 0.7x (easy) to 1.3x (hard). |
+| | ReliefDepth | `0.15` | How deep the breather dip goes below baseline. 0.15 = 15% easier. 0 = no special relief. |
+| | RampStyle | `SCurve` | How difficulty ramps within each cycle. **Linear** = constant rate. **EaseIn** = gentle start, steep finish (builds tension). **EaseOut** = steep start, gentle finish. **SCurve** = gentle start & finish, steep middle (recommended). |
+| | CurveShape | *(empty)* | Optional custom AnimationCurve (X: 0-1 cycle progress, Y: 0-1 multiplier). Overrides RampStyle if non-empty. |
+| **Boss / Breather** | BossLevelOffset | `-1` | Boss position from cycle end. -1 = second-to-last level. 0 = last level. |
+| | BreatherLevelOffset | `0` | Breather position from next cycle start. 0 = first level of next cycle. |
+| **Long-Term Progression** | BaselineDriftPerCycle | `0.02` | Baseline multiplier increase per completed cycle. 0.02 = 2% harder each cycle. After 10 cycles, baseline is 0.2 higher. Set to 0 for no progression. |
 
 ---
 
@@ -660,21 +705,116 @@ Create assets via `Assets > Create > Cadence > ...` or use the Setup Wizard (`Ca
 
 All accessible from the `Cadence` menu in Unity.
 
-| Tool | Menu Path | Description |
-|------|-----------|-------------|
-| **Setup Wizard** | `Cadence > Setup Wizard` | Guided creation of all config assets |
-| **Create Manager** | `Cadence > Create Manager in Scene` | One-click CadenceManager setup |
-| **Debug Window** | `Cadence > Debug Window` | Live flow state, signals, profile, and proposals during Play mode |
-| **Signal Replay** | `Cadence > Signal Replay` | Replay recorded signal logs to reproduce DDA behavior |
-| **Flow Visualizer** | *(auto-enabled)* | Scene view overlay showing flow state as a colored badge |
-| **Difficulty Curve** | `Cadence > Difficulty Curve Preview` | Visualize sawtooth scheduling curve |
-| **Sandbox** | `Cadence > Sandbox Dashboard` | Test DDA behavior with simulated sessions |
-| **Update Checker** | `Cadence > Check for Updates` | Check for new SDK versions on GitHub |
-| **Odin Helper** | `Cadence > Install Odin Inspector` | Guide for installing Odin (enhanced inspectors) |
+### Setup Wizard
 
-**Auto-discovery:** The Debug Window and Flow Visualizer automatically connect to CadenceManager when you enter Play mode — no manual `SetService()` call needed.
+**Menu:** `Cadence > Setup Wizard`
 
-**Odin Inspector support:** If [Odin Inspector](https://odininspector.com/) is installed, all Cadence configs get grouped sections, inline editing, validation, and conditional visibility. Cadence works perfectly without Odin — the enhanced inspectors are a bonus.
+Creates all config ScriptableObjects and wires them into the root DDAConfig in one click.
+
+1. Set the **Config Folder** (default: `Assets/Config/Cadence`). Use Browse to pick a different location.
+2. Click **Create All** — creates DDAConfig, PlayerModelConfig, FlowDetectorConfig, AdjustmentEngineConfig, and SawtoothCurveConfig.
+3. The wizard auto-wires all sub-configs into the DDAConfig asset.
+4. If configs already exist, their status shows green checkmarks. Click **Select** to jump to any config.
+5. If the DDAConfig exists but sub-configs aren't wired, click **Wire References** to fix it.
+
+### Create Manager in Scene
+
+**Menu:** `Cadence > Create Manager in Scene`
+
+Creates a `CadenceManager` GameObject in the current scene with the component pre-configured:
+- Auto-finds and assigns the first DDAConfig in your project
+- If no DDAConfig exists, prompts you to open the Setup Wizard
+- If a CadenceManager already exists, selects it instead of creating a duplicate
+- Supports Undo (`Ctrl+Z`)
+- Disabled during Play mode
+
+### Debug Window
+
+**Menu:** `Cadence > Debug Window`
+
+Live dashboard showing all DDA state during Play mode. Displays:
+- **Session** — active/inactive, level ID, level type, time, signal count, ring buffer usage
+- **Flow State** — current state (color-coded), tempo/efficiency/engagement scores, confidence
+- **Player Profile** — Glicko-2 rating, deviation, sessions completed, win rate, confidence
+- **Player Archetype** — primary and secondary archetypes with confidence percentages
+- **Last Proposal** — confidence, detected flow state, reason, all parameter deltas with rule names
+
+Auto-refreshes 4 times per second. Auto-connects to CadenceManager — no setup needed.
+
+### Signal Replay
+
+**Menu:** `Cadence > Signal Replay`
+
+Replays recorded signal logs from disk to reproduce and debug DDA behavior:
+1. Lists all `.json` signal files from `Application.persistentDataPath/Cadence/Signals/`
+2. Select a file to load the signal batch
+3. Use Play/Pause/Step controls with adjustable playback speed
+4. Shows batch info (signal count, level ID) and the full signal list
+5. Re-runs the SessionAnalyzer and FlowDetector on the loaded signals
+
+Useful for diagnosing "why did the DDA suggest that?" by replaying the exact signal sequence.
+
+### Flow State Visualizer
+
+**Always active** (no menu needed — toggleable via `FlowStateVisualizer.Enabled`)
+
+A colored overlay badge in the top-left corner of the **Scene view** during Play mode:
+- Shows current flow state name (Flow, Boredom, Anxiety, Frustration)
+- Color-coded: green (Flow), blue (Boredom), yellow (Anxiety), red (Frustration)
+- Shows tempo, efficiency, engagement, and confidence scores
+- Auto-connects to CadenceManager
+
+### Difficulty Curve Preview
+
+**Menu:** `Cadence > Difficulty Curve Preview`
+
+Visualizes the sawtooth difficulty curve before runtime:
+1. Assign a **Sawtooth Curve Config** and optionally a **Player Model Config**
+2. Set player rating/deviation to simulate different skill levels
+3. Set level range (start level, count) to preview
+4. See the rendered curve with boss spikes, breather dips, and ramp shapes
+5. Adjust config values and see the preview update in real-time
+
+### Sandbox Dashboard
+
+**Menu:** `Cadence > Sandbox Dashboard`
+
+An offline testing environment that lets you simulate DDA sessions **without entering Play mode**. You drive every step manually to understand exactly what Cadence does at each stage.
+
+**How to use the Sandbox:**
+
+1. **Left Panel — Setup:** Assign a DDAConfig, set the simulated player's starting profile (rating, deviation, win rate, sessions), configure level type and index, and define level parameters (e.g., `difficulty: 100`, `move_limit: 30`). Click **Initialize / Reset** to create the sandbox service.
+
+2. **Middle Panel — Run a Session:** Click **Begin Session** to start. Inject signals individually (click the signal grid buttons: `move.executed`, `move.optimal`, `tempo.interval`, etc.) or in bulk (**Batch Inject Moves** with a configurable optimal% slider). Click **Tick** to advance the flow detector. End the session with **End Win** or **End Lose** — this triggers `EndSession()` + `GetProposal()` and records the result.
+
+3. **Right Panel — Observe:** Watch the flow state, player archetype, Glicko-2 profile, and proposal history update in real-time. See exactly which rules fired, what deltas were proposed, and how the player rating changed.
+
+4. **Bottom Panel — Batch Simulation:** Run N sessions automatically (e.g., "simulate 20 wins" or "simulate 10 losses") to see how the system responds to streaks and how the player profile evolves over time.
+
+5. **Compare Mode:** Toggle **Compare Mode** in the toolbar, assign a second DDAConfig, and run the same sessions against both configs side-by-side. See how different configurations produce different proposals.
+
+**What the Sandbox shows you:**
+- How the 4 adjustment rules react to different signal patterns
+- How the Glicko-2 rating changes across win/loss sequences
+- How flow state classification works with different signal mixes
+- How the sawtooth multiplier affects proposals at different level indices
+- How two different configs compare on identical player behavior
+
+### Update Checker
+
+**Menu:** `Cadence > Check for Updates`
+
+Compares your installed SDK version against the latest on GitHub. Shows commit comparison if no published releases exist. Provides buttons to view changes on GitHub, copy the package URL, or open Package Manager.
+
+### Odin Inspector Helper
+
+**Menu:** `Cadence > Install Odin Inspector`
+
+Detects whether Odin Inspector is installed:
+- **If installed:** Confirms all Cadence inspector enhancements are active
+- **If not installed:** Explains the benefits and offers to open the Asset Store page
+
+Odin provides: grouped config sections, inline sub-config editing, required-field validation, conditional visibility, and detailed tooltips on every field.
 
 ---
 
