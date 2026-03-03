@@ -5,6 +5,49 @@ namespace Cadence
 {
     public sealed class PlayerProfiler : IPlayerProfiler
     {
+        // ───────────────────── Named Constants ─────────────────────
+
+        // Session duration normalization
+        private const float TypicalSessionDurationSeconds = 180f;
+        private const float CarefulThinkerSessionDurationSeconds = 120f;
+
+        // SpeedRunner weights
+        private const float SpeedRunnerEfficiencyWeight = 0.3f;
+        private const float SpeedRunnerWinRateWeight = 0.25f;
+        private const float SpeedRunnerTrendWeight = 0.15f;
+        private const float SpeedRunnerDurationWeight = 0.3f;
+
+        // CarefulThinker weights
+        private const float CarefulThinkerEfficiencyWeight = 0.3f;
+        private const float CarefulThinkerDurationWeight = 0.3f;
+        private const float CarefulThinkerWinRateWeight = 0.25f;
+        private const float CarefulThinkerMovesWeight = 0.15f;
+        private const float CarefulThinkerIdealEfficiency = 0.55f;
+        private const float CarefulThinkerIdealWinRate = 0.6f;
+        private const float CarefulThinkerPeakMultiplier = 3f;
+        private const float CarefulThinkerMovesNormalizer = 50f;
+
+        // StrugglingLearner weights
+        private const float StrugglingLearnerEfficiencyWeight = 0.3f;
+        private const float StrugglingLearnerWinRateWeight = 0.3f;
+        private const float StrugglingLearnerTrendWeight = 0.2f;
+        private const float StrugglingLearnerSessionWeight = 0.2f;
+        private const float StrugglingLearnerSessionNormalizer = 30f;
+
+        // BoosterDependent weights
+        private const float BoosterDependentRateWeight = 0.5f;
+        private const float BoosterDependentWasteWeight = 0.25f;
+        private const float BoosterDependentCarryWeight = 0.25f;
+        private const float BoosterDependentNormalizer = 5f;
+
+        // ChurnRisk weights
+        private const float ChurnRiskDurationTrendWeight = 0.3f;
+        private const float ChurnRiskEfficiencyTrendWeight = 0.3f;
+        private const float ChurnRiskWinRateWeight = 0.25f;
+        private const float ChurnRiskGapWeight = 0.15f;
+        private const float ChurnRiskGapNormalizerDays = 7f;
+        private const int ChurnRiskRecentCount = 5;
+
         public PlayerArchetypeReading Classify(PlayerSkillProfile profile, SessionSummary lastSession)
         {
             var reading = new PlayerArchetypeReading();
@@ -62,15 +105,15 @@ namespace Cadence
 
             // Short sessions + high efficiency + high win rate
             float speedScore = 0f;
-            speedScore += Mathf.Clamp01(avgEfficiency) * 0.3f;
-            speedScore += Mathf.Clamp01(winRate) * 0.25f;
-            speedScore += Mathf.Clamp01(efficiencyTrend + 0.5f) * 0.15f;
+            speedScore += Mathf.Clamp01(avgEfficiency) * SpeedRunnerEfficiencyWeight;
+            speedScore += Mathf.Clamp01(winRate) * SpeedRunnerWinRateWeight;
+            speedScore += Mathf.Clamp01(efficiencyTrend + 0.5f) * SpeedRunnerTrendWeight;
 
             // Duration penalty: faster = higher score (assume typical session ~60-120s)
             if (avgDuration > 0f)
             {
-                float durationScore = Mathf.Clamp01(1f - avgDuration / 180f);
-                speedScore += durationScore * 0.3f;
+                float durationScore = Mathf.Clamp01(1f - avgDuration / TypicalSessionDurationSeconds);
+                speedScore += durationScore * SpeedRunnerDurationWeight;
             }
 
             return Mathf.Clamp01(speedScore);
@@ -86,24 +129,24 @@ namespace Cadence
 
             float score = 0f;
             // Moderate efficiency (0.4-0.7 is careful, not speed-running)
-            float effPeak = 1f - Mathf.Abs(avgEfficiency - 0.55f) * 3f;
-            score += Mathf.Clamp01(effPeak) * 0.3f;
+            float effPeak = 1f - Mathf.Abs(avgEfficiency - CarefulThinkerIdealEfficiency) * CarefulThinkerPeakMultiplier;
+            score += Mathf.Clamp01(effPeak) * CarefulThinkerEfficiencyWeight;
 
             // Longer sessions indicate careful play
             if (avgDuration > 0f)
             {
-                float durationScore = Mathf.Clamp01(avgDuration / 120f);
-                score += durationScore * 0.3f;
+                float durationScore = Mathf.Clamp01(avgDuration / CarefulThinkerSessionDurationSeconds);
+                score += durationScore * CarefulThinkerDurationWeight;
             }
 
             // Moderate-high win rate (careful pays off)
-            float wrPeak = 1f - Mathf.Abs(winRate - 0.6f) * 3f;
-            score += Mathf.Clamp01(wrPeak) * 0.25f;
+            float wrPeak = 1f - Mathf.Abs(winRate - CarefulThinkerIdealWinRate) * CarefulThinkerPeakMultiplier;
+            score += Mathf.Clamp01(wrPeak) * CarefulThinkerWinRateWeight;
 
             // High moves per session (thinking each one through)
             float avgMoves = ComputeAverage(history, e => e.Moves);
             if (avgMoves > 0f)
-                score += Mathf.Clamp01(avgMoves / 50f) * 0.15f;
+                score += Mathf.Clamp01(avgMoves / CarefulThinkerMovesNormalizer) * CarefulThinkerMovesWeight;
 
             return Mathf.Clamp01(score);
         }
@@ -118,14 +161,14 @@ namespace Cadence
 
             float score = 0f;
             // Low efficiency
-            score += Mathf.Clamp01(1f - avgEfficiency) * 0.3f;
+            score += Mathf.Clamp01(1f - avgEfficiency) * StrugglingLearnerEfficiencyWeight;
             // Low win rate
-            score += Mathf.Clamp01(1f - winRate) * 0.3f;
+            score += Mathf.Clamp01(1f - winRate) * StrugglingLearnerWinRateWeight;
             // But improving (positive efficiency trend)
-            score += Mathf.Clamp01(efficiencyTrend + 0.5f) * 0.2f;
+            score += Mathf.Clamp01(efficiencyTrend + 0.5f) * StrugglingLearnerTrendWeight;
             // Fewer sessions completed (still learning)
-            float sessionPenalty = Mathf.Clamp01(1f - profile.SessionsCompleted / 30f);
-            score += sessionPenalty * 0.2f;
+            float sessionPenalty = Mathf.Clamp01(1f - profile.SessionsCompleted / StrugglingLearnerSessionNormalizer);
+            score += sessionPenalty * StrugglingLearnerSessionWeight;
 
             return Mathf.Clamp01(score);
         }
@@ -139,19 +182,19 @@ namespace Cadence
 
             if (lastSession.PowerUpsUsed > 0)
             {
-                float boosterRate = Mathf.Clamp01(lastSession.PowerUpsUsed / 5f);
-                score += boosterRate * 0.5f;
+                float boosterRate = Mathf.Clamp01(lastSession.PowerUpsUsed / BoosterDependentNormalizer);
+                score += boosterRate * BoosterDependentRateWeight;
 
                 // Low efficiency without boosters suggests dependence
                 float wasteSignal = Mathf.Clamp01(lastSession.WasteRatio);
-                score += wasteSignal * 0.25f;
+                score += wasteSignal * BoosterDependentWasteWeight;
             }
 
             // If win rate is decent but efficiency is low, boosters are carrying
             float winRate = ComputeAverage(history, e => e.Outcome);
             float avgEff = ComputeAverage(history, e => e.Efficiency);
             if (winRate > 0.5f && avgEff < 0.4f)
-                score += 0.25f;
+                score += BoosterDependentCarryWeight;
 
             return Mathf.Clamp01(score);
         }
@@ -162,21 +205,21 @@ namespace Cadence
             // ChurnRisk: declining session length, declining efficiency, low recent win rate
             float durationTrend = ComputeTrend(history, e => e.Duration);
             float efficiencyTrend = ComputeTrend(history, e => e.Efficiency);
-            float recentWinRate = ComputeRecentAverage(history, 5, e => e.Outcome);
+            float recentWinRate = ComputeRecentAverage(history, ChurnRiskRecentCount, e => e.Outcome);
 
             float score = 0f;
             // Declining session duration (losing interest)
-            score += Mathf.Clamp01(-durationTrend) * 0.3f;
+            score += Mathf.Clamp01(-durationTrend) * ChurnRiskDurationTrendWeight;
             // Declining efficiency (giving up, not trying)
-            score += Mathf.Clamp01(-efficiencyTrend) * 0.3f;
+            score += Mathf.Clamp01(-efficiencyTrend) * ChurnRiskEfficiencyTrendWeight;
             // Low recent win rate
-            score += Mathf.Clamp01(1f - recentWinRate) * 0.25f;
+            score += Mathf.Clamp01(1f - recentWinRate) * ChurnRiskWinRateWeight;
             // Session gap increasing (from LastSessionUtcTicks)
             if (profile.LastSessionUtcTicks > 0)
             {
                 float daysSince = (float)(System.DateTime.UtcNow.Ticks -
                     profile.LastSessionUtcTicks) / System.TimeSpan.TicksPerDay;
-                score += Mathf.Clamp01(daysSince / 7f) * 0.15f;
+                score += Mathf.Clamp01(daysSince / ChurnRiskGapNormalizerDays) * ChurnRiskGapWeight;
             }
 
             return Mathf.Clamp01(score);

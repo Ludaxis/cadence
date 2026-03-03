@@ -180,5 +180,17 @@ namespace Cadence
         [Tooltip("EMA Alpha (Exponential Moving Average). Smoothing factor for raw scores. Higher = faster response but noisier. Lower = smoother but slower. 0.3 = good balance for real-time classification.")]
 #endif
         [Range(0.01f, 1f)] public float ExponentialAlpha = 0.3f;
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            if (BoredomEfficiencyMin <= AnxietyEfficiencyMax)
+                BoredomEfficiencyMin = AnxietyEfficiencyMax + 0.1f;
+            if (BoredomTempoMin <= AnxietyTempoMax)
+                BoredomTempoMin = AnxietyTempoMax + 0.1f;
+            HysteresisCount = Mathf.Max(1, HysteresisCount);
+            WarmupMoves = Mathf.Max(1, WarmupMoves);
+        }
+#endif
     }
 }

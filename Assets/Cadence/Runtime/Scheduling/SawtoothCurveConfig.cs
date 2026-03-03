@@ -127,6 +127,20 @@ namespace Cadence
         [Tooltip("Baseline Drift per Cycle. Baseline multiplier increase per completed cycle. 0.02 = 2% harder each cycle. After 10 cycles = 20% harder baseline. 0 = no long-term progression (each cycle identical).")]
 #endif
         [Range(0f, 0.1f)] public float BaselineDriftPerCycle = 0.02f;
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            // Boss offset must be negative or zero (offset from end)
+            if (BossLevelOffset > 0) BossLevelOffset = 0;
+
+            // Breather offset must be non-negative (offset from start of next cycle)
+            if (BreatherLevelOffset < 0) BreatherLevelOffset = 0;
+
+            // Ensure breather fits within the cycle
+            if (BreatherLevelOffset >= Period) BreatherLevelOffset = Period - 1;
+        }
+#endif
     }
 
     public enum RampStyle : byte

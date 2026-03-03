@@ -3,8 +3,18 @@ using UnityEngine;
 
 namespace Cadence
 {
+    /// <summary>
+    /// Evaluates all registered <see cref="IAdjustmentRule"/> implementations against a session context
+    /// and produces an <see cref="AdjustmentProposal"/> with parameter deltas, sawtooth scaling,
+    /// and safety clamping. Four built-in rules are registered by default.
+    /// </summary>
     public sealed class AdjustmentEngine
     {
+        // Fallback defaults when config is null
+        private const float DefaultMaxDelta = 0.15f;
+        private const float DefaultGlobalCooldown = 60f;
+        private const float DefaultPerParamCooldown = 120f;
+
         private readonly AdjustmentEngineConfig _config;
         private readonly List<IAdjustmentRule> _rules = new List<IAdjustmentRule>();
         private readonly Dictionary<string, float> _lastAdjustmentTime = new Dictionary<string, float>();
@@ -21,11 +31,19 @@ namespace Cadence
             _rules.Add(new Rules.CooldownRule(config));
         }
 
+        /// <summary>
+        /// Registers an additional <see cref="IAdjustmentRule"/> to run during evaluation.
+        /// Custom rules are evaluated after the four built-in rules.
+        /// </summary>
         public void AddRule(IAdjustmentRule rule)
         {
             _rules.Add(rule);
         }
 
+        /// <summary>
+        /// Runs all rules against the context, applies sawtooth scaling and safety clamping,
+        /// and returns the final <see cref="AdjustmentProposal"/>.
+        /// </summary>
         public AdjustmentProposal Evaluate(AdjustmentContext context)
         {
             var proposal = new AdjustmentProposal
@@ -38,6 +56,7 @@ namespace Cadence
             for (int i = 0; i < _rules.Count; i++)
             {
                 var rule = _rules[i];
+                if (rule == null) continue;
                 if (rule.IsApplicable(context))
                 {
                     rule.Evaluate(context, proposal);
@@ -51,7 +70,7 @@ namespace Cadence
             }
 
             // Clamp all deltas
-            float maxDelta = _config != null ? _config.MaxDeltaPerAdjustment : 0.15f;
+            float maxDelta = _config != null ? _config.MaxDeltaPerAdjustment : DefaultMaxDelta;
             ClampDeltas(proposal, maxDelta);
 
             // Compute confidence from profile data quality
@@ -70,6 +89,9 @@ namespace Cadence
             return proposal;
         }
 
+        /// <summary>
+        /// Records that the given proposal was applied, updating cooldown timers.
+        /// </summary>
         public void RecordAdjustment(AdjustmentProposal proposal, float currentTime)
         {
             _lastGlobalAdjustmentTime = currentTime;
@@ -81,13 +103,13 @@ namespace Cadence
 
         public bool IsOnGlobalCooldown(float currentTime)
         {
-            float cooldown = _config != null ? _config.GlobalCooldownSeconds : 60f;
+            float cooldown = _config != null ? _config.GlobalCooldownSeconds : DefaultGlobalCooldown;
             return currentTime - _lastGlobalAdjustmentTime < cooldown;
         }
 
         public bool IsParameterOnCooldown(string paramKey, float currentTime)
         {
-            float cooldown = _config != null ? _config.PerParameterCooldownSeconds : 120f;
+            float cooldown = _config != null ? _config.PerParameterCooldownSeconds : DefaultPerParamCooldown;
             if (_lastAdjustmentTime.TryGetValue(paramKey, out float lastTime))
                 return currentTime - lastTime < cooldown;
             return false;

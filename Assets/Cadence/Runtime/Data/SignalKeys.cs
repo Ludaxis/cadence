@@ -1,16 +1,26 @@
 namespace Cadence
 {
     /// <summary>
-    /// All signal key constants used by the DDA system.
+    /// All signal key constants used by the DDA system, organized into a five-tier taxonomy.
     /// Signals are recorded via <c>IDDAService.RecordSignal(key, value, tier)</c>.
     /// </summary>
     /// <remarks>
-    /// Signal processing pipeline:
-    /// 1. Game fires RecordSignal() with one of these keys
-    /// 2. SignalCollector stores it in the ring buffer
-    /// 3. FlowDetector processes it in real-time (Tick)
-    /// 4. SessionAnalyzer aggregates at session end
-    /// 5. Derived scores (Skill, Engagement, Frustration) feed rules
+    /// <para><b>Signal Taxonomy (5 tiers):</b></para>
+    /// <list type="bullet">
+    ///   <item><b>Tier 0 - Decision Quality:</b> Move efficiency and optimality. Required for SkillScore.</item>
+    ///   <item><b>Tier 1 - Behavioral Tempo:</b> Pacing signals (inter-move intervals, hesitation, pauses).</item>
+    ///   <item><b>Tier 2 - Strategic Pattern:</b> Power-up usage, combos, resource management.</item>
+    ///   <item><b>Tier 3 - Retry &amp; Meta:</b> Cross-session context (attempt count, session gaps, abandons).</item>
+    ///   <item><b>Tier 4 - Raw Input:</b> Low-level input accuracy and rejection tracking.</item>
+    /// </list>
+    /// <para><b>Processing pipeline:</b></para>
+    /// <list type="number">
+    ///   <item>Game fires <c>RecordSignal()</c> with one of these keys.</item>
+    ///   <item><see cref="ISignalCollector"/> stores it in the ring buffer.</item>
+    ///   <item><see cref="IFlowDetector"/> processes it in real-time via <c>Tick()</c>.</item>
+    ///   <item><see cref="ISessionAnalyzer"/> aggregates at session end.</item>
+    ///   <item>Derived scores (Skill, Engagement, Frustration) feed adjustment rules.</item>
+    /// </list>
     /// </remarks>
     public static class SignalKeys
     {

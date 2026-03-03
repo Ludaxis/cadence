@@ -12,11 +12,19 @@ namespace Cadence
         private double _sum;
         private double _sumSq;
 
+        /// <summary>Maximum number of values the window can hold.</summary>
         public int Capacity { get; }
+
+        /// <summary>Current number of values in the window (up to <see cref="Capacity"/>).</summary>
         public int Count => _count;
+
+        /// <summary>Returns <c>true</c> when the window has reached full capacity and new values evict the oldest.</summary>
         public bool IsFull => _count >= Capacity;
 
+        /// <summary>Arithmetic mean of all values currently in the window. Returns 0 if empty.</summary>
         public float Mean => _count > 0 ? (float)(_sum / _count) : 0f;
+
+        /// <summary>Population variance of values in the window. Returns 0 if fewer than 2 values.</summary>
         public float Variance
         {
             get
@@ -27,12 +35,21 @@ namespace Cadence
             }
         }
 
+        /// <summary>
+        /// Creates a new sliding window with the given capacity.
+        /// </summary>
+        /// <param name="capacity">Maximum number of values to retain.</param>
         public FlowWindow(int capacity)
         {
             Capacity = capacity;
             _values = new float[capacity];
         }
 
+        /// <summary>
+        /// Pushes a value into the window. If full, the oldest value is evicted and its contribution
+        /// is subtracted from the running sums.
+        /// </summary>
+        /// <param name="value">The value to add.</param>
         public void Push(float value)
         {
             if (_count >= Capacity)
@@ -53,6 +70,9 @@ namespace Cadence
             _head = (_head + 1) % Capacity;
         }
 
+        /// <summary>
+        /// Resets the window to empty state, clearing all values and running sums.
+        /// </summary>
         public void Clear()
         {
             _head = 0;

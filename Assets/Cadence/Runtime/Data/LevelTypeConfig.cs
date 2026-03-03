@@ -6,6 +6,11 @@ using Sirenix.OdinInspector;
 
 namespace Cadence
 {
+    /// <summary>
+    /// Per-level-type DDA configuration that controls adjustment scaling, parameter targeting, and constraints.
+    /// Each <see cref="LevelType"/> can have different adjustment behavior (e.g., Tutorial disables DDA entirely,
+    /// Boss levels receive minimal adjustments). Use <see cref="LevelTypeDefaults.GetDefaults"/> for standard presets.
+    /// </summary>
     [Serializable]
 #if ODIN_INSPECTOR
     [InfoBox(

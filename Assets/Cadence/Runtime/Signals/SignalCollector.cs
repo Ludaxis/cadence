@@ -3,6 +3,11 @@ using UnityEngine;
 
 namespace Cadence
 {
+    /// <summary>
+    /// Default implementation of <see cref="ISignalCollector"/>.
+    /// Timestamps each signal, appends it to the current <see cref="SignalBatch"/>,
+    /// pushes it into the <see cref="SignalRingBuffer"/>, and raises <see cref="OnSignalRecorded"/>.
+    /// </summary>
     public sealed class SignalCollector : ISignalCollector
     {
         private readonly SignalBatch _batch = new SignalBatch();

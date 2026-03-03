@@ -2,6 +2,10 @@ using UnityEngine;
 
 namespace Cadence
 {
+    /// <summary>
+    /// Computes the sawtooth difficulty curve across a level progression.
+    /// Each cycle of N levels ramps from a breather dip to a boss spike, with baseline drifting upward.
+    /// </summary>
     public sealed class DifficultyScheduler : IDifficultyScheduler
     {
         private readonly SawtoothCurveConfig _config;
@@ -23,24 +27,20 @@ namespace Cadence
             var suggestedType = GetSuggestedTypeInternal(posInCycle, period);
 
             float multiplier;
-            switch (suggestedType)
+            if (suggestedType == LevelType.Boss)
             {
-                case LevelType.Boss:
-                    // Boss gets peak: 1.0 + amplitude
-                    multiplier = 1f + _config.Amplitude;
-                    break;
-                case LevelType.Breather:
-                    // Breather gets trough: 1.0 - reliefDepth
-                    multiplier = 1f - _config.ReliefDepth;
-                    break;
-                default:
-                    // Ramp from low to high within the cycle
-                    float t = GetRampProgress(posInCycle, period);
-                    // Ramp from (1 - reliefDepth) toward (1 + amplitude * 0.8)
-                    float low = 1f - _config.ReliefDepth * 0.5f;
-                    float high = 1f + _config.Amplitude * 0.8f;
-                    multiplier = Mathf.Lerp(low, high, t);
-                    break;
+                multiplier = 1f + _config.Amplitude;
+            }
+            else if (suggestedType == LevelType.Breather)
+            {
+                multiplier = 1f - _config.ReliefDepth;
+            }
+            else
+            {
+                float t = GetRampProgress(posInCycle, period);
+                float low = 1f - _config.ReliefDepth * 0.5f;
+                float high = 1f + _config.Amplitude * 0.8f;
+                multiplier = Mathf.Lerp(low, high, t);
             }
 
             multiplier += baselineDrift;
@@ -103,17 +103,13 @@ namespace Cadence
                 return _config.CurveShape.Evaluate(t);
 
             // Apply ramp style
-            switch (_config.RampStyle)
+            return _config.RampStyle switch
             {
-                case RampStyle.EaseIn:
-                    return t * t;
-                case RampStyle.EaseOut:
-                    return 1f - (1f - t) * (1f - t);
-                case RampStyle.SCurve:
-                    return t * t * (3f - 2f * t); // Smoothstep
-                default: // Linear
-                    return t;
-            }
+                RampStyle.EaseIn  => t * t,
+                RampStyle.EaseOut => 1f - (1f - t) * (1f - t),
+                RampStyle.SCurve  => t * t * (3f - 2f * t), // Smoothstep
+                _                 => t // Linear
+            };
         }
     }
 }

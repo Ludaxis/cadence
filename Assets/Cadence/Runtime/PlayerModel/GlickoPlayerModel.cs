@@ -3,25 +3,51 @@ using UnityEngine;
 
 namespace Cadence
 {
+    /// <summary>
+    /// Glicko-2 implementation of <see cref="IPlayerModel"/>.
+    /// Maintains a player skill rating with uncertainty (deviation) and volatility,
+    /// updated after each session using the Glicko-2 algorithm.
+    /// </summary>
     public sealed class GlickoPlayerModel : IPlayerModel
     {
         private readonly PlayerModelConfig _config;
         private readonly PlayerSkillProfile _profile;
 
-        // Glicko-2 scaling constant: converts between Glicko-1 and Glicko-2 scale
+        // ───────────────────── Glicko-2 Algorithm Constants ─────────────────────
+
+        /// <summary>Scaling factor between Glicko-1 (0-3000) and Glicko-2 (internal) rating scales.</summary>
         private const double GlickoScale = 173.7178;
         private const double Pi2 = Math.PI * Math.PI;
 
+        /// <summary>Baseline rating on the Glicko-1 scale (average player).</summary>
+        private const double GlickoBaselineRating = 1500.0;
+
+        /// <summary>Logistic function divisor for win probability prediction.</summary>
+        private const double WinPredictionDivisor = 400.0;
+
+        // Effective opponent estimation
+        private const float EfficiencyThreshold = 0.5f;
+        private const float EasyLevelRatingOffset = -50f;
+        private const float HardLevelRatingOffset = 50f;
+        private const float DefaultOpponentDeviation = 60f;
+
+        // Deviation clamping
+        private const float MinDeviationClamp = 30f;
+
         public PlayerSkillProfile Profile => _profile;
 
+        /// <summary>
+        /// Initializes a new Glicko-2 player model.
+        /// </summary>
+        /// <param name="config">Configuration for initial values and system constants. If null, uses defaults.</param>
         public GlickoPlayerModel(PlayerModelConfig config)
         {
             _config = config;
             _profile = new PlayerSkillProfile
             {
-                Rating = config.InitialRating,
-                Deviation = config.InitialDeviation,
-                Volatility = config.InitialVolatility
+                Rating = config != null ? config.InitialRating : PlayerSkillProfile.DefaultRating,
+                Deviation = config != null ? config.InitialDeviation : PlayerSkillProfile.DefaultDeviation,
+                Volatility = config != null ? config.InitialVolatility : PlayerSkillProfile.DefaultVolatility
             };
         }
 
@@ -32,9 +58,9 @@ namespace Cadence
             // Use skill score as a proxy for level difficulty
             // Higher skill = higher effective opponent rating
             float effectiveLevelRating = _profile.Rating +
-                (summary.MoveEfficiency > 0.5f ? -50f : 50f);
+                (summary.MoveEfficiency > EfficiencyThreshold ? EasyLevelRatingOffset : HardLevelRatingOffset);
 
-            UpdateGlicko2(actualScore, effectiveLevelRating, 60f);
+            UpdateGlicko2(actualScore, effectiveLevelRating, DefaultOpponentDeviation);
 
             // Update profile stats
             _profile.SessionsCompleted++;
@@ -70,7 +96,7 @@ namespace Cadence
         public float PredictWinRate(float levelDifficulty)
         {
             // Logistic function based on rating difference
-            double diff = (_profile.Rating - levelDifficulty) / 400.0;
+            double diff = (_profile.Rating - levelDifficulty) / WinPredictionDivisor;
             return (float)(1.0 / (1.0 + Math.Pow(10.0, -diff)));
         }
 
@@ -105,11 +131,11 @@ namespace Cadence
             double eps = _config != null ? _config.ConvergenceEpsilon : 0.000001;
 
             // Step 1: Convert to Glicko-2 scale
-            double mu = (_profile.Rating - 1500.0) / GlickoScale;
+            double mu = (_profile.Rating - GlickoBaselineRating) / GlickoScale;
             double phi = _profile.Deviation / GlickoScale;
             double sigma = _profile.Volatility;
 
-            double muJ = (opponentRating - 1500.0) / GlickoScale;
+            double muJ = (opponentRating - GlickoBaselineRating) / GlickoScale;
             double phiJ = opponentDeviation / GlickoScale;
 
             // Step 2: Compute variance (v) and delta
@@ -174,13 +200,13 @@ namespace Cadence
             double newMu = mu + newPhi * newPhi * gPhiJ * (actualScore - eVal);
 
             // Step 5: Convert back to Glicko-1 scale
-            _profile.Rating = (float)(newMu * GlickoScale + 1500.0);
+            _profile.Rating = (float)(newMu * GlickoScale + GlickoBaselineRating);
             _profile.Deviation = (float)(newPhi * GlickoScale);
             _profile.Volatility = (float)newSigma;
 
             // Clamp deviation
             float maxDev = _config != null ? _config.MaxDeviation : PlayerSkillProfile.DefaultDeviation;
-            _profile.Deviation = Mathf.Clamp(_profile.Deviation, 30f, maxDev);
+            _profile.Deviation = Mathf.Clamp(_profile.Deviation, MinDeviationClamp, maxDev);
         }
 
         private static double G(double phi)

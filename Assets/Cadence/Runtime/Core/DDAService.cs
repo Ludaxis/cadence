@@ -4,6 +4,15 @@ using UnityEngine;
 
 namespace Cadence
 {
+    /// <summary>
+    /// Production implementation of <see cref="IDDAService"/>.
+    /// Orchestrates signal collection, session analysis, Glicko-2 skill modeling,
+    /// real-time flow detection, and difficulty adjustment proposals.
+    /// </summary>
+    /// <remarks>
+    /// NOT thread-safe. All methods must be called from the main Unity thread.
+    /// For a drag-and-drop setup, use <see cref="CadenceManager"/> instead.
+    /// </remarks>
     public sealed class DDAService : IDDAService
     {
         private readonly DDAConfig _config;

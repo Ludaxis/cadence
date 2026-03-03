@@ -3,6 +3,10 @@ using System.Collections.Generic;
 
 namespace Cadence
 {
+    /// <summary>
+    /// Accumulates all <see cref="SignalEntry"/> instances recorded during a single gameplay session.
+    /// Passed to <see cref="ISessionAnalyzer.Analyze"/> at session end and to <see cref="ISignalStorage"/> for persistence.
+    /// </summary>
     [Serializable]
     public class SignalBatch
     {

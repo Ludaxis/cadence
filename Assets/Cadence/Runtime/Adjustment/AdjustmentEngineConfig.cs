@@ -208,5 +208,16 @@ namespace Cadence
         [Tooltip("Max Delta per Adjustment. Maximum change as a fraction of current parameter value. 0.15 = 15%. A parameter at 20 can change by at most +/-3 in one proposal. Prevents runaway difficulty shifts.")]
 #endif
         [Range(0f, 0.5f)] public float MaxDeltaPerAdjustment = 0.15f;
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            if (TargetWinRateMin > TargetWinRateMax)
+                TargetWinRateMin = TargetWinRateMax - 0.1f;
+            GlobalCooldownSeconds = Mathf.Max(0f, GlobalCooldownSeconds);
+            PerParameterCooldownSeconds = Mathf.Max(0f, PerParameterCooldownSeconds);
+            MaxDeltaPerAdjustment = Mathf.Clamp(MaxDeltaPerAdjustment, 0.01f, 0.5f);
+        }
+#endif
     }
 }

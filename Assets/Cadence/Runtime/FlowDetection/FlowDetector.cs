@@ -5,6 +5,17 @@ namespace Cadence
 {
     public sealed class FlowDetector : IFlowDetector
     {
+        // ───────────────────── Named Constants ─────────────────────
+
+        // Confidence calculation
+        private const float ConfidenceBase = 0.5f;
+        private const float ConfidenceIncrement = 0.1f;
+
+        // Frustration score weights
+        private const float FrustrationEfficiencyWeight = 0.5f;
+        private const float FrustrationTempoWeight = 0.3f;
+        private const float FrustrationEngagementWeight = 0.2f;
+
         private readonly FlowDetectorConfig _config;
         private readonly FlowWindow _tempoWindow;
         private readonly FlowWindow _efficiencyWindow;
@@ -113,8 +124,8 @@ namespace Cadence
 
             // Build reading
             float confidence = _movesSeen < warmup
-                ? Mathf.Clamp01((float)_movesSeen / warmup * 0.5f)
-                : Mathf.Clamp01(0.5f + _candidateCount * 0.1f);
+                ? Mathf.Clamp01((float)_movesSeen / warmup * ConfidenceBase)
+                : Mathf.Clamp01(ConfidenceBase + _candidateCount * ConfidenceIncrement);
 
             _currentReading.Confidence = confidence;
             _currentReading.TempoScore = _smoothedTempo;
@@ -173,7 +184,9 @@ namespace Cadence
             float frustrationThreshold = _config != null ? _config.FrustrationThreshold : 0.7f;
 
             // Compute frustration signal from low efficiency + erratic tempo
-            float frustrationScore = (1f - efficiency) * 0.5f + (1f - tempo) * 0.3f + (1f - engagement) * 0.2f;
+            float frustrationScore = (1f - efficiency) * FrustrationEfficiencyWeight
+                + (1f - tempo) * FrustrationTempoWeight
+                + (1f - engagement) * FrustrationEngagementWeight;
             if (frustrationScore > frustrationThreshold)
                 return FlowState.Frustration;
 

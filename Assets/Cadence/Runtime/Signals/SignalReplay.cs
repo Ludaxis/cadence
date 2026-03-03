@@ -3,6 +3,11 @@ using System.Collections.Generic;
 
 namespace Cadence
 {
+    /// <summary>
+    /// Default implementation of <see cref="ISignalReplay"/>.
+    /// Replays a recorded <see cref="SignalBatch"/> at configurable speed, emitting each
+    /// signal at its original session timestamp for debug visualization and sandbox testing.
+    /// </summary>
     public sealed class SignalReplay : ISignalReplay
     {
         private List<SignalEntry> _entries;

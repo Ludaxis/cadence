@@ -3,6 +3,17 @@
 All notable changes to the Cadence DDA SDK are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.2.1] - 2026-03-03
+
+### Improved
+- **XML documentation** on all public interfaces, classes, structs, and methods across 33 files
+- **Named constants** replace magic numbers in SessionAnalyzer, FlowDetector, PlayerProfiler, AdjustmentEngine, and GlickoPlayerModel
+- **OnValidate** editor-time validation added to SawtoothCurveConfig and PlayerModelConfig (all 5 configs now validated)
+- **Switch expressions** modernize ArchetypeAdjustmentStrategy, LevelTypeDefaults, and DifficultyScheduler (C# 8+)
+- **Null guards** in SessionAnalyzer.Analyze, GlickoPlayerModel constructor, and AdjustmentEngine rule loop
+- **Sandbox Dashboard** completely rewritten — fixes 6 critical bugs (dead profile fields, broken compare mode, missing DDA feedback loop, wrong signal tiers, missing session summary, binary batch simulation)
+- **Non-Odin inspector** attributes (rich tooltips, headers, range sliders) on all config ScriptableObjects
+
 ## [1.2.0] - 2026-03-03
 
 ### Added

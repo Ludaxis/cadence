@@ -136,5 +136,23 @@ namespace Cadence
         [Range(5, 100)]
 #endif
         public int MaxHistoryEntries = 20;
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            // Rating must be positive
+            if (InitialRating < 0f) InitialRating = 0f;
+
+            // Deviation must be positive and <= MaxDeviation
+            if (InitialDeviation < 1f) InitialDeviation = 1f;
+            if (InitialDeviation > MaxDeviation) InitialDeviation = MaxDeviation;
+
+            // MaxDeviation must be >= InitialDeviation
+            if (MaxDeviation < InitialDeviation) MaxDeviation = InitialDeviation;
+
+            // History buffer must hold at least a few sessions
+            if (MaxHistoryEntries < 5) MaxHistoryEntries = 5;
+        }
+#endif
     }
 }

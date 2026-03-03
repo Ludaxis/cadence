@@ -5,13 +5,32 @@ namespace Cadence
 {
     public sealed class SessionAnalyzer : ISessionAnalyzer
     {
+        // ───────────────────── Named Constants ─────────────────────
+
+        // Engagement score
+        private const float TempoNormalizationDivisor = 5f;
+        private const float PausePenaltyFactor = 0.15f;
+        private const float EngagementTempoWeight = 0.6f;
+        private const float EngagementPauseWeight = 0.4f;
+
+        // Skill score
+        private const float SkillEfficiencyWeight = 0.7f;
+        private const float SkillSequenceWeight = 0.3f;
+
+        // Frustration score
+        private const float FrustrationWasteWeight = 0.30f;
+        private const float FrustrationVarianceWeight = 0.25f;
+        private const float FrustrationPauseWeight = 0.20f;
+        private const float FrustrationEfficiencyWeight = 0.25f;
+
         public SessionSummary Analyze(SignalBatch batch)
         {
+            if (batch?.Entries == null || batch.Entries.Count == 0)
+                return new SessionSummary();
+
             var summary = new SessionSummary();
             var entries = batch.Entries;
             summary.TotalSignals = entries.Count;
-
-            if (entries.Count == 0) return summary;
 
             // Accumulators
             int moveCount = 0;
@@ -108,7 +127,9 @@ namespace Cadence
             }
 
             // Tier 0
-            summary.MoveEfficiency = moveCount > 0 ? (float)optimalMoves / moveCount : 0f;
+            summary.MoveEfficiency = moveCount > 0
+                ? Mathf.Clamp01((float)optimalMoves / moveCount)
+                : 0f;
             float totalResources = moveCount > 0 ? moveCount : 1f;
             summary.WasteRatio = totalWaste / totalResources;
             summary.ProgressRate = moveCount > 0 ? totalProgress / moveCount : 0f;
@@ -143,17 +164,17 @@ namespace Cadence
             // Weighted blend of efficiency and sequence matching
             float efficiency = s.MoveEfficiency;
             float sequence = s.SequenceMatchRate;
-            return Mathf.Clamp01(efficiency * 0.7f + sequence * 0.3f);
+            return Mathf.Clamp01(efficiency * SkillEfficiencyWeight + sequence * SkillSequenceWeight);
         }
 
         private static float ComputeEngagementScore(SessionSummary s)
         {
             // Low inter-move variance + few pauses = high engagement
             float tempoConsistency = s.InterMoveVariance > 0f
-                ? Mathf.Clamp01(1f - Mathf.Sqrt(s.InterMoveVariance) / 5f)
+                ? Mathf.Clamp01(1f - Mathf.Sqrt(s.InterMoveVariance) / TempoNormalizationDivisor)
                 : 0.5f;
-            float pausePenalty = Mathf.Clamp01(1f - s.PauseCount * 0.15f);
-            return Mathf.Clamp01(tempoConsistency * 0.6f + pausePenalty * 0.4f);
+            float pausePenalty = Mathf.Clamp01(1f - s.PauseCount * PausePenaltyFactor);
+            return Mathf.Clamp01(tempoConsistency * EngagementTempoWeight + pausePenalty * EngagementPauseWeight);
         }
 
         private static float ComputeFrustrationScore(SessionSummary s)
@@ -161,15 +182,15 @@ namespace Cadence
             // High waste + high variance + many pauses = frustration
             float wasteSignal = Mathf.Clamp01(s.WasteRatio);
             float varianceSignal = s.InterMoveVariance > 0f
-                ? Mathf.Clamp01(Mathf.Sqrt(s.InterMoveVariance) / 5f)
+                ? Mathf.Clamp01(Mathf.Sqrt(s.InterMoveVariance) / TempoNormalizationDivisor)
                 : 0f;
-            float pauseSignal = Mathf.Clamp01(s.PauseCount * 0.15f);
+            float pauseSignal = Mathf.Clamp01(s.PauseCount * PausePenaltyFactor);
             float efficiencyInverse = 1f - s.MoveEfficiency;
             return Mathf.Clamp01(
-                wasteSignal * 0.3f +
-                varianceSignal * 0.25f +
-                pauseSignal * 0.2f +
-                efficiencyInverse * 0.25f
+                wasteSignal * FrustrationWasteWeight +
+                varianceSignal * FrustrationVarianceWeight +
+                pauseSignal * FrustrationPauseWeight +
+                efficiencyInverse * FrustrationEfficiencyWeight
             );
         }
     }
