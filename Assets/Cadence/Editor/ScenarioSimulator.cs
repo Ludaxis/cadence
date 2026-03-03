@@ -752,9 +752,9 @@ namespace Cadence.Editor
                 // Base effective win rate: persona (+ growth) modulated by sawtooth
                 float effectiveWinRate = persona.EffectiveWinRate(i) * (2f - multiplier);
 
-                // DDA parameter shift: if DDA increased params (easier), boost win rate.
-                // Uses diminishing returns: tanh maps unbounded param growth to [-1, +1].
-                // Sensitivity 0.3 means a perfectly saturated shift caps at ±30% win rate change.
+                // DDA parameter shift: the DDA convention is "lower param = easier difficulty."
+                // When DDA DECREASES a param, it intends to help the player → boost win rate.
+                // So paramShift is (base - current) / base: positive when DDA reduced the param.
                 // For baseline runs, currentParams == baseParams so shift is always 0.
                 float paramShift = 0f;
                 foreach (var kvp in currentParams)
@@ -762,16 +762,16 @@ namespace Cadence.Editor
                     if (baseParams.TryGetValue(kvp.Key, out float baseVal) &&
                         Mathf.Abs(baseVal) > 0.001f)
                     {
-                        paramShift += (kvp.Value - baseVal) / baseVal;
+                        paramShift += (baseVal - kvp.Value) / baseVal;
                     }
                 }
                 if (currentParams.Count > 0)
                     paramShift /= currentParams.Count;
 
                 // Diminishing returns: tanh(shift) squashes large adjustments.
-                // move_limit 30→36 (+20%): tanh(0.2)=0.197 → +5.9% win rate
-                // move_limit 30→60 (+100%): tanh(1.0)=0.762 → +22.8% win rate
-                // move_limit 30→90 (+200%): tanh(2.0)=0.964 → +28.9% win rate (caps near 30%)
+                // DDA reduces move_limit 30→27 (−10%): tanh(0.1)=0.100 → +3.0% win rate boost
+                // DDA reduces move_limit 30→15 (−50%): tanh(0.5)=0.462 → +13.9% win rate boost
+                // DDA reduces move_limit 30→6  (−80%): tanh(0.8)=0.664 → +19.9% win rate boost
                 const float sensitivity = 0.3f;
                 float dampedShift = (float)System.Math.Tanh(paramShift) * sensitivity;
                 effectiveWinRate *= 1f + dampedShift;
