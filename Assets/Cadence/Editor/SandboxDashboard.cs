@@ -48,6 +48,8 @@ namespace Cadence.Editor
         private DDAConfig _compareConfig;
         private DDAService _compareService;
         private List<ProposalRecord> _compareHistory = new List<ProposalRecord>();
+        private Dictionary<string, float> _activeParams;
+        private Dictionary<string, float> _compareActiveParams;
 
         // UI state
         private bool _showSessionSummary = true;
@@ -87,8 +89,18 @@ namespace Cadence.Editor
                 _hasSessionSummary = false;
             }
 
-            _compareMode = GUILayout.Toggle(_compareMode, "Compare Mode",
+            bool newCompareMode = GUILayout.Toggle(_compareMode, "Compare Mode",
                 EditorStyles.toolbarButton, GUILayout.Width(100));
+            if (newCompareMode != _compareMode)
+            {
+                _compareMode = newCompareMode;
+                if (!_compareMode)
+                {
+                    _compareService = null;
+                    _compareActiveParams = null;
+                    _compareHistory.Clear();
+                }
+            }
 
             GUILayout.FlexibleSpace();
 
@@ -145,13 +157,25 @@ namespace Cadence.Editor
             _ddaConfig = (DDAConfig)EditorGUILayout.ObjectField(
                 "DDA Config", _ddaConfig, typeof(DDAConfig), false);
             if (EditorGUI.EndChangeCheck())
+            {
                 _service = null;
+                _activeParams = null;
+                _compareService = null;
+                _compareActiveParams = null;
+            }
 
             if (_compareMode)
             {
                 EditorGUILayout.Space(2);
+                EditorGUI.BeginChangeCheck();
                 _compareConfig = (DDAConfig)EditorGUILayout.ObjectField(
                     "Compare Config", _compareConfig, typeof(DDAConfig), false);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    _compareService = null;
+                    _compareActiveParams = null;
+                    _compareHistory.Clear();
+                }
             }
 
             // ── Step 2: Player Profile ──
@@ -187,23 +211,38 @@ namespace Cadence.Editor
                 "These are the parameters GetProposal() will modify.",
                 MessageType.None);
 
+            bool paramsChanged = false;
             for (int i = 0; i < _levelParams.Count; i++)
             {
                 EditorGUILayout.BeginHorizontal();
-                _levelParams[i] = new ParamEntry
+                var updated = new ParamEntry
                 {
                     Key = EditorGUILayout.TextField(_levelParams[i].Key, GUILayout.Width(90)),
                     Value = EditorGUILayout.FloatField(_levelParams[i].Value)
                 };
+                if (_levelParams[i].Key != updated.Key ||
+                    !Mathf.Approximately(_levelParams[i].Value, updated.Value))
+                {
+                    paramsChanged = true;
+                }
+                _levelParams[i] = updated;
+
                 if (GUILayout.Button("×", GUILayout.Width(20)))
                 {
                     _levelParams.RemoveAt(i);
+                    paramsChanged = true;
                     i--;
                 }
                 EditorGUILayout.EndHorizontal();
             }
             if (GUILayout.Button("+ Add Parameter"))
+            {
                 _levelParams.Add(new ParamEntry { Key = "param", Value = 1f });
+                paramsChanged = true;
+            }
+
+            if (paramsChanged)
+                ApplyParamEditsToActiveState();
 
             // ── Initialize Button ──
             EditorGUILayout.Space(8);
@@ -575,6 +614,7 @@ namespace Cadence.Editor
             _service = new DDAService(_ddaConfig);
             _proposalHistory.Clear();
             _hasSessionSummary = false;
+            _activeParams = BuildParamDict();
 
             // Apply custom player profile
             InjectPlayerProfile(_service, _initialRating, _initialDeviation,
@@ -584,8 +624,15 @@ namespace Cadence.Editor
             {
                 _compareService = new DDAService(_compareConfig);
                 _compareHistory.Clear();
+                _compareActiveParams = new Dictionary<string, float>(_activeParams);
                 InjectPlayerProfile(_compareService, _initialRating, _initialDeviation,
                     _initialWinRate, _initialSessions);
+            }
+            else
+            {
+                _compareService = null;
+                _compareActiveParams = null;
+                _compareHistory.Clear();
             }
 
             Repaint();
@@ -631,11 +678,22 @@ namespace Cadence.Editor
         private void BeginSessionOnAllServices()
         {
             if (_service == null) return;
-            var dict = BuildParamDict();
-            _service.BeginSession("sandbox_level", dict, _levelType);
+            if (_activeParams == null || _activeParams.Count == 0)
+                _activeParams = BuildParamDict();
+
+            EnsureCompareServiceReady();
+
+            _service.BeginSession("sandbox_level",
+                new Dictionary<string, float>(_activeParams), _levelType);
 
             if (_compareMode && _compareService != null)
-                _compareService.BeginSession("sandbox_level", dict, _levelType);
+            {
+                if (_compareActiveParams == null || _compareActiveParams.Count == 0)
+                    _compareActiveParams = new Dictionary<string, float>(_activeParams);
+
+                _compareService.BeginSession("sandbox_level",
+                    new Dictionary<string, float>(_compareActiveParams), _levelType);
+            }
 
             Repaint();
         }
@@ -651,17 +709,27 @@ namespace Cadence.Editor
             _lastSessionSummary = debug.LastSessionSummary;
             _hasSessionSummary = true;
 
-            var dict = BuildParamDict();
-            var proposal = _service.GetProposal(dict, _levelType, _levelIndex);
+            if (_activeParams == null || _activeParams.Count == 0)
+                _activeParams = BuildParamDict();
+
+            var proposal = _service.GetProposal(
+                new Dictionary<string, float>(_activeParams), _levelType, _levelIndex);
             RecordProposal(proposal, outcome, _proposalHistory);
 
             if (_compareMode && _compareService != null)
             {
+                if (_compareActiveParams == null || _compareActiveParams.Count == 0)
+                    _compareActiveParams = new Dictionary<string, float>(_activeParams);
+
                 _compareService.EndSession(outcome);
-                var cProposal = _compareService.GetProposal(dict, _levelType, _levelIndex);
+                var cProposal = _compareService.GetProposal(
+                    new Dictionary<string, float>(_compareActiveParams),
+                    _levelType,
+                    _levelIndex);
                 RecordProposal(cProposal, outcome, _compareHistory);
             }
 
+            _levelIndex++;
             Repaint();
         }
 
@@ -673,23 +741,23 @@ namespace Cadence.Editor
             for (int i = 0; i < count; i++)
             {
                 service.RecordSignal(SignalKeys.MoveExecuted, 1f,
-                    SignalTier.DecisionQuality, i);
+                    SignalTier.DecisionQuality, i + 1);
 
                 if (i < optimalCount)
                 {
                     service.RecordSignal(SignalKeys.MoveOptimal, 1f,
-                        SignalTier.DecisionQuality, i);
+                        SignalTier.DecisionQuality, i + 1);
                     service.RecordSignal(SignalKeys.ProgressDelta, 0.05f,
-                        SignalTier.DecisionQuality, i);
+                        SignalTier.DecisionQuality, i + 1);
                 }
                 else
                 {
                     service.RecordSignal(SignalKeys.MoveWaste, 1f,
-                        SignalTier.DecisionQuality, i);
+                        SignalTier.DecisionQuality, i + 1);
                 }
 
                 service.RecordSignal(SignalKeys.InterMoveInterval, _interMoveInterval,
-                    SignalTier.BehavioralTempo, i);
+                    SignalTier.BehavioralTempo, i + 1);
                 service.Tick(_interMoveInterval);
             }
 
@@ -711,16 +779,31 @@ namespace Cadence.Editor
                 return;
             }
 
+            EnsureCompareServiceReady();
+
+            var stateA = _activeParams != null && _activeParams.Count > 0
+                ? new Dictionary<string, float>(_activeParams)
+                : BuildParamDict();
+
+            Dictionary<string, float> stateB = null;
+            if (_compareMode && _compareService != null)
+            {
+                stateB = _compareActiveParams != null && _compareActiveParams.Count > 0
+                    ? new Dictionary<string, float>(_compareActiveParams)
+                    : new Dictionary<string, float>(stateA);
+            }
+
             for (int i = 0; i < count; i++)
             {
                 bool isWin = Random.value < winRate;
                 float sessionOptimal = isWin ? 0.6f + Random.value * 0.3f : 0.1f + Random.value * 0.3f;
 
                 // Begin session on all services
-                var dict = BuildParamDict();
-                _service.BeginSession($"sim_{i}", dict, _levelType);
-                if (_compareMode && _compareService != null)
-                    _compareService.BeginSession($"sim_{i}", dict, _levelType);
+                _service.BeginSession($"sim_{i}",
+                    new Dictionary<string, float>(stateA), _levelType);
+                if (stateB != null)
+                    _compareService.BeginSession($"sim_{i}",
+                        new Dictionary<string, float>(stateB), _levelType);
 
                 // Inject moves
                 InjectMoves(_service, 15, sessionOptimal);
@@ -735,23 +818,33 @@ namespace Cadence.Editor
                 _lastSessionSummary = debug.LastSessionSummary;
                 _hasSessionSummary = true;
 
-                var proposal = _service.GetProposal(dict, _levelType, _levelIndex);
+                var proposal = _service.GetProposal(
+                    new Dictionary<string, float>(stateA), _levelType, _levelIndex);
                 RecordProposal(proposal, outcome, _proposalHistory);
 
-                if (_compareMode && _compareService != null)
+                if (stateB != null)
                 {
                     _compareService.EndSession(outcome);
-                    var cProposal = _compareService.GetProposal(dict, _levelType, _levelIndex);
+                    var cProposal = _compareService.GetProposal(
+                        new Dictionary<string, float>(stateB), _levelType, _levelIndex);
                     RecordProposal(cProposal, outcome, _compareHistory);
+
+                    if (_autoApplyProposals && cProposal != null && cProposal.Deltas != null)
+                        ApplyProposalToDictionary(cProposal, stateB);
                 }
 
                 // Auto-apply proposals to feed back into next session
                 if (_autoApplyProposals && proposal != null && proposal.Deltas != null)
-                    ApplyProposalToParams(proposal);
+                    ApplyProposalToDictionary(proposal, stateA);
 
                 _levelIndex++;
             }
 
+            _activeParams = stateA;
+            if (stateB != null)
+                _compareActiveParams = stateB;
+
+            SyncParamEntriesFromDictionary(_activeParams);
             Repaint();
         }
 
@@ -759,34 +852,60 @@ namespace Cadence.Editor
         {
             if (_proposalHistory.Count == 0) return;
             var last = _proposalHistory[_proposalHistory.Count - 1];
-            for (int i = 0; i < _levelParams.Count; i++)
+            if (_activeParams == null || _activeParams.Count == 0)
+                _activeParams = BuildParamDict();
+
+            foreach (var d in last.Deltas)
+                _activeParams[d.Key] = d.To;
+
+            SyncParamEntriesFromDictionary(_activeParams);
+        }
+
+        private void ApplyParamEditsToActiveState()
+        {
+            var editedParams = BuildParamDict();
+            _activeParams = new Dictionary<string, float>(editedParams);
+
+            // Manual UI edits should become the shared baseline for compare mode.
+            if (_compareMode)
+                _compareActiveParams = new Dictionary<string, float>(editedParams);
+        }
+
+        private void EnsureCompareServiceReady()
+        {
+            if (!_compareMode || _compareConfig == null || _compareService != null)
+                return;
+
+            _compareService = new DDAService(_compareConfig);
+            _compareHistory.Clear();
+
+            // If the main service already has state, clone it so A/B start from the same profile.
+            if (_service != null)
             {
-                foreach (var d in last.Deltas)
-                {
-                    if (_levelParams[i].Key == d.Key)
-                    {
-                        _levelParams[i] = new ParamEntry { Key = d.Key, Value = d.To };
-                    }
-                }
+                _compareService.LoadProfile(_service.SaveProfile());
+            }
+            else
+            {
+                InjectPlayerProfile(_compareService, _initialRating, _initialDeviation,
+                    _initialWinRate, _initialSessions);
+            }
+
+            if (_compareActiveParams == null || _compareActiveParams.Count == 0)
+            {
+                if (_activeParams == null || _activeParams.Count == 0)
+                    _activeParams = BuildParamDict();
+
+                _compareActiveParams = new Dictionary<string, float>(_activeParams);
             }
         }
 
-        private void ApplyProposalToParams(AdjustmentProposal proposal)
+        private static void ApplyProposalToDictionary(AdjustmentProposal proposal,
+            Dictionary<string, float> targetParams)
         {
-            if (proposal?.Deltas == null) return;
-            for (int i = 0; i < _levelParams.Count; i++)
+            if (proposal?.Deltas == null || targetParams == null) return;
+            foreach (var d in proposal.Deltas)
             {
-                foreach (var d in proposal.Deltas)
-                {
-                    if (_levelParams[i].Key == d.ParameterKey)
-                    {
-                        _levelParams[i] = new ParamEntry
-                        {
-                            Key = d.ParameterKey,
-                            Value = d.ProposedValue
-                        };
-                    }
-                }
+                targetParams[d.ParameterKey] = d.ProposedValue;
             }
         }
 
@@ -799,6 +918,45 @@ namespace Cadence.Editor
                     dict[_levelParams[i].Key] = _levelParams[i].Value;
             }
             return dict;
+        }
+
+        private void SyncParamEntriesFromDictionary(Dictionary<string, float> source)
+        {
+            if (source == null) return;
+
+            for (int i = 0; i < _levelParams.Count; i++)
+            {
+                if (source.TryGetValue(_levelParams[i].Key, out float value))
+                {
+                    _levelParams[i] = new ParamEntry
+                    {
+                        Key = _levelParams[i].Key,
+                        Value = value
+                    };
+                }
+            }
+
+            foreach (var kvp in source)
+            {
+                bool found = false;
+                for (int i = 0; i < _levelParams.Count; i++)
+                {
+                    if (_levelParams[i].Key == kvp.Key)
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found)
+                {
+                    _levelParams.Add(new ParamEntry
+                    {
+                        Key = kvp.Key,
+                        Value = kvp.Value
+                    });
+                }
+            }
         }
 
         private static void RecordProposal(AdjustmentProposal proposal, SessionOutcome outcome,

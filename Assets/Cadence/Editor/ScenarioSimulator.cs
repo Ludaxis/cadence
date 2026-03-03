@@ -385,9 +385,12 @@ namespace Cadence.Editor
             var gridColor = new Color(1f, 1f, 1f, 0.05f);
             EditorGraphUtility.DrawGrid(rect, 4, 10, gridColor);
 
-            // Compute dynamic Y range across all runs
-            float minRating = 1500f, maxRating = 1500f;
-            foreach (var run in _runs)
+            // Compute dynamic Y range across DDA + baseline runs
+            float minRating = float.MaxValue;
+            float maxRating = float.MinValue;
+            var allRuns = new List<SimulationRun>(_runs);
+            allRuns.AddRange(_baselineRuns);
+            foreach (var run in allRuns)
             {
                 for (int i = 0; i < run.Snapshots.Count; i++)
                 {
@@ -396,6 +399,11 @@ namespace Cadence.Editor
                     if (r > maxRating) maxRating = r;
                 }
             }
+            if (minRating == float.MaxValue || maxRating == float.MinValue)
+            {
+                minRating = 1500f;
+                maxRating = 1500f;
+            }
             float padding = (maxRating - minRating) * 0.1f + 50f;
             float minY = minRating - padding;
             float maxY = maxRating + padding;
@@ -403,7 +411,7 @@ namespace Cadence.Editor
             EditorGraphUtility.DrawHorizontalLine(rect, 1500f, minY, maxY,
                 new Color(1f, 1f, 1f, 0.15f), 1f);
 
-            // Baseline runs (thin, dim — flat at 1500 since no Glicko without DDA)
+            // Baseline runs (thin, dim)
             foreach (var run in _baselineRuns)
             {
                 var values = new float[run.Snapshots.Count];
@@ -446,7 +454,9 @@ namespace Cadence.Editor
 
             // Compute dynamic Y range
             float minVal = float.MaxValue, maxVal = float.MinValue;
-            foreach (var run in _runs)
+            var allRuns = new List<SimulationRun>(_runs);
+            allRuns.AddRange(_baselineRuns);
+            foreach (var run in allRuns)
             {
                 for (int i = 0; i < run.Snapshots.Count; i++)
                 {
@@ -730,8 +740,9 @@ namespace Cadence.Editor
 
             var run = new SimulationRun { Persona = runPersona };
 
-            // DDA service only created when needed
-            DDAService service = useDDA ? new DDAService(_ddaConfig) : null;
+            // Keep runtime path identical for DDA and baseline.
+            // Baseline mode simply skips proposal application.
+            var service = new DDAService(_ddaConfig);
 
             // Same RNG seed for both DDA and baseline so win/lose sequence is comparable
             var rng = new System.Random(persona.Name.GetHashCode() ^ _seed);
@@ -785,24 +796,22 @@ namespace Cadence.Editor
                 float playerRating = 1500f;
                 float playerDeviation = 350f;
 
+                // Full runtime loop (both DDA and baseline)
+                service.BeginSession("level_" + i,
+                    new Dictionary<string, float>(currentParams), levelType);
+
+                InjectSignals(service, persona, won, rng, i);
+
+                float elapsedTime = 0.016f * persona.MeanMoveCount;
+                service.Tick(elapsedTime);
+
+                service.EndSession(won ? SessionOutcome.Win : SessionOutcome.Lose);
+
+                var debug = service.GetDebugSnapshot();
+                flowState = debug.CurrentFlow.State;
+
                 if (useDDA)
                 {
-                    // Full DDA loop
-                    service.BeginSession("level_" + i,
-                        new Dictionary<string, float>(currentParams), levelType);
-
-                    InjectSignals(service, persona, won, rng, i);
-
-                    float elapsedTime = 0.016f * persona.MeanMoveCount;
-                    service.Tick(elapsedTime);
-
-                    service.EndSession(won ? SessionOutcome.Win : SessionOutcome.Lose);
-
-                    var debug = service.GetDebugSnapshot();
-                    flowState = debug.LastSessionSummary.FrustrationScore > 0.7f
-                        ? FlowState.Frustration
-                        : debug.CurrentFlow.State;
-
                     var nextLevelType = (i + 1 < _levelCount)
                         ? scheduler.GetSuggestedLevelType(i + 1)
                         : LevelType.Standard;
@@ -816,23 +825,11 @@ namespace Cadence.Editor
                     }
 
                     ApplyProposal(proposal, currentParams);
-
-                    var profile = service.PlayerProfile;
-                    playerRating = profile.Rating;
-                    playerDeviation = profile.Deviation;
                 }
-                else
-                {
-                    // Baseline: consume the same RNG calls so sequences stay aligned
-                    // InjectSignals consumes rng for moveCount variance, booster, pause
-                    int moveCount = Mathf.Max(3, Mathf.RoundToInt(
-                        persona.MeanMoveCount +
-                        (float)(rng.NextDouble() * 2 - 1) * persona.MoveCountVariance));
-                    rng.NextDouble(); // booster roll
-                    rng.NextDouble(); // pause roll
 
-                    // Parameters stay fixed at base values — no proposals
-                }
+                var profile = service.PlayerProfile;
+                playerRating = profile.Rating;
+                playerDeviation = profile.Deviation;
 
                 // Rolling win rate
                 recentOutcomes.Enqueue(won);
@@ -877,23 +874,23 @@ namespace Cadence.Editor
             for (int m = 0; m < moveCount; m++)
             {
                 service.RecordSignal(SignalKeys.MoveExecuted, 1f,
-                    SignalTier.DecisionQuality, m);
+                    SignalTier.DecisionQuality, m + 1);
 
                 if (m < optimalCount)
                 {
                     service.RecordSignal(SignalKeys.MoveOptimal, 1f,
-                        SignalTier.DecisionQuality, m);
+                        SignalTier.DecisionQuality, m + 1);
                     service.RecordSignal(SignalKeys.ProgressDelta, 0.05f,
-                        SignalTier.DecisionQuality, m);
+                        SignalTier.DecisionQuality, m + 1);
                 }
                 else
                 {
                     service.RecordSignal(SignalKeys.MoveWaste, 1f,
-                        SignalTier.DecisionQuality, m);
+                        SignalTier.DecisionQuality, m + 1);
                 }
 
                 service.RecordSignal(SignalKeys.InterMoveInterval, persona.MeanInterMoveTime,
-                    SignalTier.BehavioralTempo, m);
+                    SignalTier.BehavioralTempo, m + 1);
                 service.Tick(persona.MeanInterMoveTime);
             }
 
