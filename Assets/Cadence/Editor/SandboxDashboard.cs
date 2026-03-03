@@ -332,7 +332,11 @@ namespace Cadence.Editor
             _interMoveInterval = EditorGUILayout.Slider("Move Interval (sec)", _interMoveInterval, 0.2f, 10f);
             _pauseCount = EditorGUILayout.IntSlider("Pauses", _pauseCount, 0, 10);
             if (GUILayout.Button("Inject Moves"))
+            {
                 InjectMoves(_service, _moveCount, _optimalPercent);
+                if (_compareMode && _compareService != null && _compareService.IsSessionActive)
+                    InjectMoves(_compareService, _moveCount, _optimalPercent);
+            }
             GUI.enabled = true;
 
             // ── Signal Buttons ──

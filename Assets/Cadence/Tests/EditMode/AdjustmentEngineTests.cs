@@ -210,6 +210,28 @@ namespace Cadence.Tests
             }
         }
 
+        [Test]
+        public void Evaluate_SawtoothHardening_DoesNotFlipEasingDirection()
+        {
+            var context = CreateContext(
+                sessionsCompleted: 10,
+                averageOutcome: 0.15f, // Should ease
+                recentHistory: CreateHistory(10, winRate: 0.15f)
+            );
+            context.SawtoothMultiplier = 1.3f; // Hard cycle point
+
+            var proposal = _engine.Evaluate(context);
+
+            Assert.IsNotNull(proposal);
+            Assert.Greater(proposal.Deltas.Count, 0);
+
+            foreach (var d in proposal.Deltas)
+            {
+                Assert.Less(d.ProposedValue, d.CurrentValue,
+                    $"Sawtooth must not flip easing delta for {d.ParameterKey}");
+            }
+        }
+
         // --- Helpers ---
 
         private AdjustmentContext CreateContext(int sessionsCompleted, float averageOutcome,

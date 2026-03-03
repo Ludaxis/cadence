@@ -117,13 +117,13 @@ namespace Cadence
 
         private static void ApplySawtoothScaling(AdjustmentProposal proposal, float multiplier)
         {
-            // Bias each parameter's proposed value toward what the sawtooth curve suggests.
-            // multiplier > 1 = harder cycle point, < 1 = easier cycle point.
-            // We blend: final = proposed * multiplier
+            // Scale the proposed CHANGE, not the absolute value.
+            // multiplier > 1 amplifies the existing direction, < 1 dampens it.
             for (int i = 0; i < proposal.Deltas.Count; i++)
             {
                 var delta = proposal.Deltas[i];
-                delta.ProposedValue *= multiplier;
+                float proposedChange = delta.ProposedValue - delta.CurrentValue;
+                delta.ProposedValue = delta.CurrentValue + proposedChange * multiplier;
                 proposal.Deltas[i] = delta;
             }
         }
