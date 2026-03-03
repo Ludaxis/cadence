@@ -119,5 +119,21 @@ namespace Cadence.Editor
             Handles.DrawSolidDisc(new Vector3(x, y, 0f), Vector3.forward, radius);
             Handles.color = prevColor;
         }
+
+        /// <summary>
+        /// Draws a horizontal strip of colored rectangles (one per data point) for heatmap rows.
+        /// </summary>
+        public static void DrawColorStrip(Rect area, Color[] colors, float borderWidth = 0.5f)
+        {
+            if (colors == null || colors.Length == 0) return;
+
+            float cellWidth = area.width / colors.Length;
+            for (int i = 0; i < colors.Length; i++)
+            {
+                var rect = new Rect(area.x + i * cellWidth, area.y,
+                    cellWidth - borderWidth, area.height);
+                EditorGUI.DrawRect(rect, colors[i]);
+            }
+        }
     }
 }
