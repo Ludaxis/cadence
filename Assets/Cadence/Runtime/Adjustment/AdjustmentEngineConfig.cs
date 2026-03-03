@@ -40,7 +40,8 @@ namespace Cadence
         [PropertyRange(0.1f, 0.5f)]
         [GUIColor(0.85f, 1f, 0.85f)]
 #else
-        [Header("Flow Channel")]
+        [Header("Flow Channel Rule — nudges win rate toward a healthy band")]
+        [Tooltip("Target Win Rate Min. Below this, difficulty eases (gets easier). 0.3 = 30% win rate. Puzzle games typically use 0.3-0.4. Requires 5+ completed sessions to activate.")]
 #endif
         [Range(0f, 1f)] public float TargetWinRateMin = 0.3f;
 
@@ -51,6 +52,8 @@ namespace Cadence
                           "0.7 = 70% win rate. Puzzle games typically use 0.6-0.75.")]
         [PropertyRange(0.5f, 0.95f)]
         [GUIColor(0.85f, 1f, 0.85f)]
+#else
+        [Tooltip("Target Win Rate Max. Above this, difficulty hardens (gets harder). 0.7 = 70% win rate. The band between Min and Max is the 'flow channel' — no adjustments happen inside it.")]
 #endif
         [Range(0f, 1f)] public float TargetWinRateMax = 0.7f;
 
@@ -60,6 +63,8 @@ namespace Cadence
                           "Linear = proportional response.\n" +
                           "Ease-in = gentle near the band, aggressive far from it.\n" +
                           "Ease-out = aggressive near the band, gentle far from it.")]
+#else
+        [Tooltip("Difficulty Adjustment Curve. Maps distance from band edge (X: 0-1) to adjustment magnitude (Y: 0-1). Linear = proportional. Ease-in = gentle near band, aggressive far. Ease-out = opposite.")]
 #endif
         public AnimationCurve DifficultyAdjustmentCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
 
@@ -80,7 +85,10 @@ namespace Cadence
         [SuffixLabel("losses", Overlay = true)]
         [PropertyRange(2, 10)]
 #else
-        [Header("Streak Damping")]
+        [Space(10)]
+        [Header("Streak Damper Rule — eases after losses, hardens after wins")]
+        [Tooltip("Loss Streak Threshold. Consecutive losses before easing kicks in. 3 = standard (lose 3 in a row → difficulty eases). Escalates +2% per additional loss beyond this count.")]
+        [Range(2, 10)]
 #endif
         public int LossStreakThreshold = 3;
 
@@ -90,6 +98,9 @@ namespace Cadence
         [PropertyTooltip("Consecutive wins before hardening kicks in. 5 = generous (lets players enjoy success).")]
         [SuffixLabel("wins", Overlay = true)]
         [PropertyRange(2, 15)]
+#else
+        [Tooltip("Win Streak Threshold. Consecutive wins before hardening kicks in. 5 = generous (lets players enjoy winning). Hardening blocked for ChurnRisk and StrugglingLearner archetypes.")]
+        [Range(2, 15)]
 #endif
         public int WinStreakThreshold = 5;
 
@@ -99,6 +110,8 @@ namespace Cadence
         [PropertyTooltip("Base easing percentage when loss streak triggers.\n" +
                           "0.10 = 10% reduction per parameter. Escalates +2% per additional loss beyond threshold.")]
         [SuffixLabel("per param", Overlay = true)]
+#else
+        [Tooltip("Loss Ease Amount. Base easing (reduction) per parameter when loss streak triggers. 0.10 = 10% reduction. Escalates +2% per additional loss beyond the threshold.")]
 #endif
         [Range(0f, 0.3f)] public float LossStreakEaseAmount = 0.10f;
 
@@ -109,6 +122,8 @@ namespace Cadence
                           "0.05 = 5% increase per parameter. Intentionally gentler than easing. " +
                           "Escalates +1% per additional win beyond threshold.")]
         [SuffixLabel("per param", Overlay = true)]
+#else
+        [Tooltip("Win Harden Amount. Base hardening (increase) per parameter when win streak triggers. 0.05 = 5% increase. Intentionally gentler than loss easing. Escalates +1% per additional win.")]
 #endif
         [Range(0f, 0.3f)] public float WinStreakHardenAmount = 0.05f;
 
@@ -137,7 +152,9 @@ namespace Cadence
         [PropertyRange(0.3f, 0.95f)]
         [GUIColor(1f, 0.85f, 0.85f)]
 #else
-        [Header("Frustration Relief")]
+        [Space(10)]
+        [Header("Frustration Relief Rule — emergency easing when overwhelmed")]
+        [Tooltip("Frustration Relief Threshold. Frustration score above this triggers emergency easing. Score = waste ratio (30%) + inter-move variance (25%) + pause count (20%) + low efficiency (25%). 0.7 = high bar, fewer false positives.")]
 #endif
         [Range(0f, 1f)] public float FrustrationReliefThreshold = 0.7f;
 
@@ -154,7 +171,10 @@ namespace Cadence
         [SuffixLabel("seconds", Overlay = true)]
         [PropertyRange(0f, 300f)]
 #else
-        [Header("Cooldown")]
+        [Space(10)]
+        [Header("Cooldown Rule — prevents rapid adjustment spam")]
+        [Tooltip("Global Cooldown (seconds). Minimum time between any two adjustment proposals. 60s prevents back-to-back adjustments across quick session retries. Set to 0 to disable.")]
+        [Range(0f, 300f)]
 #endif
         public float GlobalCooldownSeconds = 60f;
 
@@ -165,6 +185,9 @@ namespace Cadence
                           "120s ensures a parameter isn't whipsawed between opposing rules.")]
         [SuffixLabel("seconds", Overlay = true)]
         [PropertyRange(0f, 600f)]
+#else
+        [Tooltip("Per-Parameter Cooldown (seconds). Minimum time before the same parameter can be adjusted again. 120s ensures parameters aren't whipsawed between opposing rules.")]
+        [Range(0f, 600f)]
 #endif
         public float PerParameterCooldownSeconds = 120f;
 
@@ -180,7 +203,9 @@ namespace Cadence
         [SuffixLabel("of current value", Overlay = true)]
         [PropertyRange(0.01f, 0.5f)]
 #else
-        [Header("Clamping")]
+        [Space(10)]
+        [Header("Safety Clamping — hard limit on adjustment size")]
+        [Tooltip("Max Delta per Adjustment. Maximum change as a fraction of current parameter value. 0.15 = 15%. A parameter at 20 can change by at most +/-3 in one proposal. Prevents runaway difficulty shifts.")]
 #endif
         [Range(0f, 0.5f)] public float MaxDeltaPerAdjustment = 0.15f;
     }

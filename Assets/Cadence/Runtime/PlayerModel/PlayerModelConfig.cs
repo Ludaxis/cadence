@@ -28,7 +28,8 @@ namespace Cadence
                           "Higher starting value = system assumes the player is better initially.")]
         [SuffixLabel("rating points", Overlay = true)]
 #else
-        [Header("Glicko-2 Defaults")]
+        [Header("Initial Values — starting profile for a new player")]
+        [Tooltip("Starting Glicko-2 rating. 1500 = average. Higher = system assumes player is better initially. Updates after each session based on performance vs expected.")]
 #endif
         public float InitialRating = 1500f;
 
@@ -41,6 +42,8 @@ namespace Cadence
                           "  175 = 50% confident\n" +
                           "  35  = 90% confident")]
         [SuffixLabel("RD", Overlay = true)]
+#else
+        [Tooltip("Starting uncertainty (Rating Deviation). 350 = brand new, maximum uncertainty. Confidence = 1-(RD/350): 350=0%, 175=50%, 35=90%. Shrinks as more sessions are played.")]
 #endif
         public float InitialDeviation = 350f;
 
@@ -50,6 +53,9 @@ namespace Cadence
                           "0.06 is the Glicko-2 standard default.\n" +
                           "Higher = rating swings more. Lower = more stable ratings.")]
         [PropertyRange(0.01f, 0.15f)]
+#else
+        [Tooltip("How much the rating can fluctuate between sessions. 0.06 = Glicko-2 standard. Higher = more swing, lower = more stable. Range: 0.01-0.15.")]
+        [Range(0.01f, 0.15f)]
 #endif
         public float InitialVolatility = 0.06f;
 
@@ -65,8 +71,10 @@ namespace Cadence
         [LabelText("Tau (τ)")]
         [PropertyRange(0.2f, 1.5f)]
 #else
-        [Header("System Constants")]
-        [Tooltip("Controls the size of the rating change. Typical: 0.5 to 1.2")]
+        [Space(10)]
+        [Header("System Constants — advanced Glicko-2 parameters")]
+        [Tooltip("Tau constrains volatility change speed. Lower (0.3-0.5) = conservative, ratings change slowly. Higher (0.8-1.2) = aggressive. 0.5 recommended for puzzle games.")]
+        [Range(0.2f, 1.5f)]
 #endif
         public float Tau = 0.5f;
 
@@ -76,7 +84,7 @@ namespace Cadence
                           "Smaller = more precise but more iterations. Default 0.000001 is standard.")]
         [LabelText("Convergence Epsilon (ε)")]
 #else
-        [Tooltip("Convergence tolerance for volatility iteration")]
+        [Tooltip("Convergence tolerance for the volatility iteration algorithm. 0.000001 is the standard default. No need to change this.")]
 #endif
         public float ConvergenceEpsilon = 0.000001f;
 
@@ -92,8 +100,10 @@ namespace Cadence
         [SuffixLabel("RD / day", Overlay = true)]
         [PropertyRange(0f, 20f)]
 #else
-        [Header("Time Decay")]
-        [Tooltip("Deviation increase per day of inactivity")]
+        [Space(10)]
+        [Header("Inactivity Decay — uncertainty grows when player is away")]
+        [Tooltip("Deviation increase per day of inactivity (in RD units). At 5/day, after 1 week away deviation grows by 35. Prevents stale ratings from producing overconfident adjustments for returning players.")]
+        [Range(0f, 20f)]
 #endif
         public float DeviationDecayPerDay = 5f;
 
@@ -104,7 +114,8 @@ namespace Cadence
         [SuffixLabel("RD max", Overlay = true)]
         [PropertyRange(100f, 500f)]
 #else
-        [Tooltip("Maximum deviation after decay")]
+        [Tooltip("Upper cap for deviation after time decay. 350 = fully uncertain (same as a brand new player).")]
+        [Range(100f, 500f)]
 #endif
         public float MaxDeviation = 350f;
 
@@ -119,7 +130,10 @@ namespace Cadence
         [SuffixLabel("entries", Overlay = true)]
         [PropertyRange(5, 100)]
 #else
-        [Header("Session History")]
+        [Space(10)]
+        [Header("Session History — rolling buffer for archetype & streak detection")]
+        [Tooltip("Max sessions in the rolling history buffer. Used by Player Profiler (archetype classification) and Streak Damper (win/loss streak detection). 20 covers about 1-2 weeks of daily play.")]
+        [Range(5, 100)]
 #endif
         public int MaxHistoryEntries = 20;
     }

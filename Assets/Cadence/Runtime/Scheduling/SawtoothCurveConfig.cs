@@ -30,8 +30,8 @@ namespace Cadence
                           "Shorter periods (5-8) create more frequent tension/relief. Longer (15-25) for slower pacing.")]
         [SuffixLabel("levels", Overlay = true)]
 #else
-        [Header("Cycle Shape")]
-        [Tooltip("Number of levels per sawtooth cycle")]
+        [Header("Cycle Shape — shape and intensity of each difficulty wave")]
+        [Tooltip("Number of levels in one complete sawtooth cycle. 10 = every 10 levels, difficulty resets with boss at level 9, breather at level 10. Shorter (5-8) = more frequent tension/relief. Longer (15-25) = slower pacing.")]
 #endif
         [Range(5, 50)] public int Period = 10;
 
@@ -43,7 +43,7 @@ namespace Cadence
                           "0.5 = dramatic swings (0.5x to 1.5x).")]
         [SuffixLabel("+/- from baseline", Overlay = true)]
 #else
-        [Tooltip("Peak-to-trough multiplier range (0.3 = multiplier varies from 0.7 to 1.3)")]
+        [Tooltip("Amplitude. Peak-to-trough range of the difficulty multiplier. 0.3 = varies 0.7x (easy) to 1.3x (hard). 0.1 = subtle variation. 0.5 = dramatic swings.")]
 #endif
         [Range(0.05f, 0.5f)] public float Amplitude = 0.3f;
 
@@ -54,7 +54,7 @@ namespace Cadence
                           "Set to 0 for no special relief. Higher = more noticeable breather.")]
         [SuffixLabel("below baseline", Overlay = true)]
 #else
-        [Tooltip("How deep the relief dip goes after the boss spike")]
+        [Tooltip("Relief Depth. How deep the breather dip goes after the boss spike. 0.15 = breather is 15% easier than cycle baseline. 0 = no special relief. Higher = more noticeable breather.")]
 #endif
         [Range(0f, 0.3f)] public float ReliefDepth = 0.15f;
 
@@ -66,7 +66,7 @@ namespace Cadence
                           "EaseOut  — Steep start, gentle finish (front-loaded).\n" +
                           "SCurve   — Gentle start and finish, steep middle (recommended).")]
 #else
-        [Tooltip("Ramp style for the ascending difficulty within each cycle")]
+        [Tooltip("Ramp Style. How difficulty ramps within each cycle. Linear = constant rate. EaseIn = gentle start, steep finish. EaseOut = steep start, gentle finish. SCurve = gentle start and finish (recommended).")]
 #endif
         public RampStyle RampStyle = RampStyle.SCurve;
 
@@ -77,7 +77,7 @@ namespace Cadence
                           "Y axis: 0 (minimum multiplier) to 1 (maximum multiplier).\n" +
                           "Leave empty to use the RampStyle enum.")]
 #else
-        [Tooltip("Optional custom curve shape (overrides RampStyle if non-empty)")]
+        [Tooltip("Custom Curve Shape. Optional AnimationCurve that overrides RampStyle. X: 0 (cycle start) to 1 (cycle end). Y: 0 (min multiplier) to 1 (max multiplier). Leave empty to use the RampStyle enum instead.")]
 #endif
         public AnimationCurve CurveShape = new AnimationCurve();
 
@@ -93,8 +93,9 @@ namespace Cadence
                           "0 = last level of the cycle is the boss.")]
         [SuffixLabel("from cycle end", Overlay = true)]
 #else
-        [Header("Boss / Breather Positions")]
-        [Tooltip("Boss level offset from end of cycle (-1 = second-to-last)")]
+        [Space(10)]
+        [Header("Boss / Breather Positions — spike and dip placement in each cycle")]
+        [Tooltip("Boss Offset from End. Boss level offset from the end of the cycle. -1 = second-to-last level is the boss. 0 = last level is the boss.")]
 #endif
         [Range(-5, 0)] public int BossLevelOffset = -1;
 
@@ -106,7 +107,7 @@ namespace Cadence
                           "1 = second level is the breather.")]
         [SuffixLabel("from next cycle start", Overlay = true)]
 #else
-        [Tooltip("Breather level offset from start of next cycle (0 = first level)")]
+        [Tooltip("Breather Offset from Start. Breather level offset from the start of the NEXT cycle. 0 = first level of next cycle is the breather. 1 = second level is the breather.")]
 #endif
         [Range(0, 3)] public int BreatherLevelOffset = 0;
 
@@ -121,8 +122,9 @@ namespace Cadence
                           "0 = no long-term progression (each cycle is identical difficulty-wise).")]
         [SuffixLabel("per cycle", Overlay = true)]
 #else
-        [Header("Long-Term Progression")]
-        [Tooltip("Baseline difficulty increase per completed cycle")]
+        [Space(10)]
+        [Header("Long-Term Progression — baseline creeps upward each cycle")]
+        [Tooltip("Baseline Drift per Cycle. Baseline multiplier increase per completed cycle. 0.02 = 2% harder each cycle. After 10 cycles = 20% harder baseline. 0 = no long-term progression (each cycle identical).")]
 #endif
         [Range(0f, 0.1f)] public float BaselineDriftPerCycle = 0.02f;
     }
