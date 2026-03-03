@@ -409,7 +409,7 @@ namespace Cadence.Editor
 
                 EditorGUILayout.BeginHorizontal();
                 if (GUILayout.Button("Open Package Manager"))
-                    EditorApplication.ExecuteMenuItem("Window/Package Manager");
+                    UnityEditor.PackageManager.UI.Window.Open("");
 
                 if (GUILayout.Button("Dismiss"))
                 {
