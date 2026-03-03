@@ -753,8 +753,9 @@ namespace Cadence.Editor
                 float effectiveWinRate = persona.EffectiveWinRate(i) * (2f - multiplier);
 
                 // DDA parameter shift: if DDA increased params (easier), boost win rate.
-                // e.g. move_limit 30 → 36 is +20% → adds ~10% to win rate (0.5 sensitivity).
-                // For baseline runs, currentParams == baseParams so shift is 0.
+                // Uses diminishing returns: tanh maps unbounded param growth to [-1, +1].
+                // Sensitivity 0.3 means a perfectly saturated shift caps at ±30% win rate change.
+                // For baseline runs, currentParams == baseParams so shift is always 0.
                 float paramShift = 0f;
                 foreach (var kvp in currentParams)
                 {
@@ -766,7 +767,14 @@ namespace Cadence.Editor
                 }
                 if (currentParams.Count > 0)
                     paramShift /= currentParams.Count;
-                effectiveWinRate *= 1f + paramShift * 0.5f;
+
+                // Diminishing returns: tanh(shift) squashes large adjustments.
+                // move_limit 30→36 (+20%): tanh(0.2)=0.197 → +5.9% win rate
+                // move_limit 30→60 (+100%): tanh(1.0)=0.762 → +22.8% win rate
+                // move_limit 30→90 (+200%): tanh(2.0)=0.964 → +28.9% win rate (caps near 30%)
+                const float sensitivity = 0.3f;
+                float dampedShift = (float)System.Math.Tanh(paramShift) * sensitivity;
+                effectiveWinRate *= 1f + dampedShift;
 
                 effectiveWinRate = Mathf.Clamp(effectiveWinRate, 0.05f, 0.95f);
 
