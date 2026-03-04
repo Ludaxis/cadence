@@ -150,7 +150,7 @@ namespace Cadence
         }
 
         public AdjustmentProposal GetProposal(Dictionary<string, float> nextLevelParameters,
-            LevelType nextLevelType, int nextLevelIndex = -1)
+            LevelType nextLevelType, int nextLevelIndex = -1, float? simulatedTime = null)
         {
             if (_config != null && !_config.EnableBetweenSessionAdjustment)
                 return null;
@@ -168,6 +168,8 @@ namespace Cadence
             // Classify player archetype
             _currentArchetype = _profiler.Classify(_playerModel.Profile, _lastSessionSummary);
 
+            float timeNow = simulatedTime ?? Time.unscaledTime;
+
             var context = new AdjustmentContext
             {
                 Profile = _playerModel.Profile,
@@ -178,7 +180,7 @@ namespace Cadence
                     : new Dictionary<string, float>(),
                 RecentHistory = _playerModel.Profile.RecentHistory,
                 SessionGapDays = _lastSessionSummary.SessionGapDays,
-                TimeSinceLastAdjustment = Time.unscaledTime,
+                TimeSinceLastAdjustment = timeNow,
                 LevelType = nextLevelType,
                 LevelTypeConfig = typeConfig,
                 SawtoothMultiplier = sawtoothMult,
@@ -189,7 +191,7 @@ namespace Cadence
             _lastProposal = _adjustmentEngine.Evaluate(context);
 
             if (_lastProposal != null && _lastProposal.Deltas.Count > 0)
-                _adjustmentEngine.RecordAdjustment(_lastProposal, Time.unscaledTime);
+                _adjustmentEngine.RecordAdjustment(_lastProposal, timeNow);
 
             return _lastProposal;
         }

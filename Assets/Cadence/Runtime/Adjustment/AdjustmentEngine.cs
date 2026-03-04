@@ -62,6 +62,9 @@ namespace Cadence
                 }
             }
 
+            // Merge duplicate parameter keys: keep the largest absolute delta per key
+            MergeDuplicateDeltas(proposal);
+
             // Apply sawtooth multiplier: scale all deltas toward the target multiplier
             if (context.SawtoothMultiplier != 0f && context.SawtoothMultiplier != 1f)
             {
@@ -114,6 +117,35 @@ namespace Cadence
                 delta.ProposedValue = delta.CurrentValue + proposedChange * multiplier;
                 proposal.Deltas[i] = delta;
             }
+        }
+
+        private static void MergeDuplicateDeltas(AdjustmentProposal proposal)
+        {
+            if (proposal.Deltas.Count <= 1) return;
+
+            // Find the best (largest absolute change) delta per parameter key
+            var bestIndex = new Dictionary<string, int>();
+            for (int i = 0; i < proposal.Deltas.Count; i++)
+            {
+                var delta = proposal.Deltas[i];
+                if (bestIndex.TryGetValue(delta.ParameterKey, out int existing))
+                {
+                    if (Mathf.Abs(delta.Delta) > Mathf.Abs(proposal.Deltas[existing].Delta))
+                        bestIndex[delta.ParameterKey] = i;
+                }
+                else
+                {
+                    bestIndex[delta.ParameterKey] = i;
+                }
+            }
+
+            if (bestIndex.Count == proposal.Deltas.Count) return;
+
+            var merged = new List<ParameterDelta>(bestIndex.Count);
+            foreach (var kvp in bestIndex)
+                merged.Add(proposal.Deltas[kvp.Value]);
+            proposal.Deltas.Clear();
+            proposal.Deltas.AddRange(merged);
         }
 
         private static void ClampDeltas(AdjustmentProposal proposal, float maxDelta)

@@ -779,11 +779,11 @@ namespace Cadence.Editor
                 if (currentParams.Count > 0)
                     paramShift /= currentParams.Count;
 
-                // Diminishing returns: tanh(shift) squashes large adjustments.
-                // DDA reduces move_limit 30→27 (−10%): tanh(0.1)=0.100 → +3.0% win rate boost
-                // DDA reduces move_limit 30→15 (−50%): tanh(0.5)=0.462 → +13.9% win rate boost
-                // DDA reduces move_limit 30→6  (−80%): tanh(0.8)=0.664 → +19.9% win rate boost
-                const float sensitivity = 0.3f;
+                // Diminishing returns: tanh(shift) squashes extreme adjustments.
+                // DDA reduces move_limit 30→27 (−10%): tanh(0.1)=0.100 → +10% win rate boost
+                // DDA reduces move_limit 30→15 (−50%): tanh(0.5)=0.462 → +46% win rate boost
+                // DDA reduces move_limit 30→6  (−80%): tanh(0.8)=0.664 → +66% win rate boost
+                const float sensitivity = 1.0f;
                 float dampedShift = (float)System.Math.Tanh(paramShift) * sensitivity;
                 effectiveWinRate *= 1f + dampedShift;
 
@@ -815,8 +815,12 @@ namespace Cadence.Editor
                     var nextLevelType = (i + 1 < _levelCount)
                         ? scheduler.GetSuggestedLevelType(i + 1)
                         : LevelType.Standard;
+                    // Simulate realistic time gaps between levels (~150s each) so
+                    // both global (60s) and per-parameter (120s) cooldowns clear each level.
+                    float simTime = (i + 1) * 150f;
                     var proposal = service.GetProposal(
-                        new Dictionary<string, float>(currentParams), nextLevelType, i + 1);
+                        new Dictionary<string, float>(currentParams), nextLevelType, i + 1,
+                        simulatedTime: simTime);
 
                     if (proposal?.Deltas != null)
                     {
