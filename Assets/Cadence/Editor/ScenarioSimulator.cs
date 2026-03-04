@@ -54,6 +54,8 @@ namespace Cadence.Editor
         private const float ParamGraphHeight = 120f;
         private const float HeatmapRowHeight = 16f;
         private const float HeatmapLabelWidth = 120f;
+        private const float ImpactSummaryRowHeight = 18f;
+        private const float WinLoseGroupSpacing = 4f;
 
         private const float LeftPanelWidth = 250f;
         private const float BottomPanelHeight = 200f;
@@ -235,6 +237,8 @@ namespace Cadence.Editor
             EditorGUILayout.Space(4);
             DrawWinLoseGraph(graphWidth);
             EditorGUILayout.Space(4);
+            DrawDDAImpactSummary(graphWidth);
+            EditorGUILayout.Space(4);
             DrawRollingWinRateGraph(graphWidth);
             EditorGUILayout.Space(4);
             DrawRatingGraph(graphWidth);
@@ -293,34 +297,121 @@ namespace Cadence.Editor
         {
             EditorGUILayout.LabelField("Win/Lose Outcomes", EditorStyles.boldLabel);
 
-            // Combine all runs for row layout: DDA runs first, then baseline
-            var allRuns = new List<SimulationRun>(_runs);
-            allRuns.AddRange(_baselineRuns);
-            int totalRows = allRuns.Count;
+            bool showBaseline = _showBaseline && _baselineRuns.Count == _runs.Count;
+            int rowsPerPersona = showBaseline ? 3 : 1; // DDA + baseline + diff, or just DDA
+            float rowHeight = 12f;
+            int personaCount = _runs.Count;
             float graphHeight = Mathf.Max(WinLoseGraphHeight,
-                totalRows > 0 ? totalRows * 12f : WinLoseGraphHeight);
+                personaCount * (rowsPerPersona * rowHeight + WinLoseGroupSpacing));
 
             var rect = GUILayoutUtility.GetRect(width, graphHeight);
             if (Event.current.type != EventType.Repaint) return;
 
             float barWidth = rect.width / _levelCount;
-            for (int r = 0; r < allRuns.Count; r++)
+            float groupHeight = rowsPerPersona * rowHeight;
+            float groupStride = groupHeight + WinLoseGroupSpacing;
+
+            for (int p = 0; p < _runs.Count; p++)
             {
-                var run = allRuns[r];
-                var persona = run.Persona;
-                float h = rect.height / totalRows;
-                float y = rect.y + r * h;
+                var ddaRun = _runs[p];
+                var persona = ddaRun.Persona;
+                float groupY = rect.y + p * groupStride;
 
-                for (int i = 0; i < run.Snapshots.Count; i++)
+                // DDA row — full opacity
+                for (int i = 0; i < ddaRun.Snapshots.Count; i++)
                 {
-                    var snap = run.Snapshots[i];
+                    var snap = ddaRun.Snapshots[i];
                     float x = rect.x + i * barWidth;
-
                     var color = snap.Won
-                        ? new Color(persona.Color.r, persona.Color.g, persona.Color.b, 0.7f)
+                        ? new Color(persona.Color.r, persona.Color.g, persona.Color.b, 0.8f)
                         : new Color(0.4f, 0.1f, 0.1f, 0.5f);
-                    var barRect = new Rect(x, y, Mathf.Max(1f, barWidth - 0.5f), h - 1f);
-                    EditorGUI.DrawRect(barRect, color);
+                    EditorGUI.DrawRect(new Rect(x, groupY, Mathf.Max(1f, barWidth - 0.5f), rowHeight - 1f), color);
+                }
+
+                if (showBaseline)
+                {
+                    var baseRun = _baselineRuns[p];
+
+                    // Baseline row — dimmer
+                    float baseY = groupY + rowHeight;
+                    for (int i = 0; i < baseRun.Snapshots.Count; i++)
+                    {
+                        var snap = baseRun.Snapshots[i];
+                        float x = rect.x + i * barWidth;
+                        var color = snap.Won
+                            ? new Color(persona.Color.r, persona.Color.g, persona.Color.b, 0.35f)
+                            : new Color(0.4f, 0.1f, 0.1f, 0.25f);
+                        EditorGUI.DrawRect(new Rect(x, baseY, Mathf.Max(1f, barWidth - 0.5f), rowHeight - 1f), color);
+                    }
+
+                    // Diff row — sparse markers where DDA flipped outcomes
+                    float diffY = groupY + rowHeight * 2f;
+                    int count = Mathf.Min(ddaRun.Snapshots.Count, baseRun.Snapshots.Count);
+                    for (int i = 0; i < count; i++)
+                    {
+                        bool ddaWon = ddaRun.Snapshots[i].Won;
+                        bool baseWon = baseRun.Snapshots[i].Won;
+                        if (ddaWon == baseWon) continue;
+
+                        float x = rect.x + i * barWidth;
+                        var color = ddaWon
+                            ? new Color(0.2f, 0.9f, 0.3f, 0.9f) // gained win — green
+                            : new Color(0.9f, 0.2f, 0.2f, 0.9f); // lost win — red
+                        EditorGUI.DrawRect(new Rect(x, diffY, Mathf.Max(1f, barWidth - 0.5f), rowHeight - 1f), color);
+                    }
+                }
+            }
+        }
+
+        // ── DDA Impact Summary ──
+
+        private void DrawDDAImpactSummary(float width)
+        {
+            if (!_showBaseline || _baselineRuns.Count != _runs.Count) return;
+
+            EditorGUILayout.LabelField("DDA Impact Summary", EditorStyles.boldLabel);
+
+            var labelStyle = new GUIStyle(EditorStyles.miniLabel)
+            {
+                alignment = TextAnchor.MiddleLeft,
+                normal = { textColor = Color.white }
+            };
+
+            for (int p = 0; p < _runs.Count; p++)
+            {
+                var ddaRun = _runs[p];
+                var baseRun = _baselineRuns[p];
+                int count = Mathf.Min(ddaRun.Snapshots.Count, baseRun.Snapshots.Count);
+
+                int winsGained = 0, winsLost = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    bool ddaWon = ddaRun.Snapshots[i].Won;
+                    bool baseWon = baseRun.Snapshots[i].Won;
+                    if (ddaWon && !baseWon) winsGained++;
+                    else if (!ddaWon && baseWon) winsLost++;
+                }
+
+                float ddaWinRate = ddaRun.OverallWinRate;
+                float baseWinRate = baseRun.OverallWinRate;
+                float winRateDiff = (ddaWinRate - baseWinRate) * 100f;
+
+                string sign = winRateDiff >= 0 ? "+" : "";
+                string text = $"  {ddaRun.Persona.Name}: {winsGained} wins gained, {winsLost} lost | {sign}{winRateDiff:F1}% win rate";
+
+                var rowRect = GUILayoutUtility.GetRect(width, ImpactSummaryRowHeight);
+                if (Event.current.type == EventType.Repaint)
+                {
+                    // Background bar proportional to net effect
+                    int net = winsGained - winsLost;
+                    float maxNet = Mathf.Max(1f, count * 0.2f); // scale reference
+                    float barFrac = Mathf.Clamp01(Mathf.Abs(net) / maxNet);
+                    var barColor = net >= 0
+                        ? new Color(0.2f, 0.8f, 0.3f, 0.2f * barFrac)
+                        : new Color(0.9f, 0.2f, 0.2f, 0.2f * barFrac);
+                    EditorGUI.DrawRect(new Rect(rowRect.x, rowRect.y, rowRect.width * barFrac, rowRect.height), barColor);
+
+                    GUI.Label(rowRect, text, labelStyle);
                 }
             }
         }
@@ -527,10 +618,7 @@ namespace Cadence.Editor
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
 
-            var heatmapRuns = new List<SimulationRun>(_runs);
-            heatmapRuns.AddRange(_baselineRuns);
-
-            foreach (var run in heatmapRuns)
+            foreach (var run in _runs)
             {
                 EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.LabelField(run.Persona.Name, GUILayout.Width(HeatmapLabelWidth));
