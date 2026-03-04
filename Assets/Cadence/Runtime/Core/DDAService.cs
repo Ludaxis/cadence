@@ -146,11 +146,17 @@ namespace Cadence
 
         public AdjustmentProposal GetProposal(Dictionary<string, float> nextLevelParameters)
         {
-            return GetProposal(nextLevelParameters, _currentLevelType, -1);
+            return GetProposal(nextLevelParameters, _currentLevelType, -1, null);
         }
 
         public AdjustmentProposal GetProposal(Dictionary<string, float> nextLevelParameters,
-            LevelType nextLevelType, int nextLevelIndex = -1, float? simulatedTime = null)
+            LevelType nextLevelType, int nextLevelIndex = -1)
+        {
+            return GetProposal(nextLevelParameters, nextLevelType, nextLevelIndex, null);
+        }
+
+        public AdjustmentProposal GetProposal(Dictionary<string, float> nextLevelParameters,
+            LevelType nextLevelType, int nextLevelIndex, float? simulatedTime)
         {
             if (_config != null && !_config.EnableBetweenSessionAdjustment)
                 return null;
