@@ -274,13 +274,14 @@ namespace Cadence.Editor
                 new Color(0.5f, 0.8f, 1f), 2f);
 
             // Boss/breather dots
-            for (int i = 0; i < _levelCount; i++)
+            int sawtoothLen = Mathf.Min(_sawtoothMultipliers.Length, _sawtoothTypes.Length);
+            for (int i = 0; i < sawtoothLen; i++)
             {
                 if (_sawtoothTypes[i] == LevelType.Boss)
-                    EditorGraphUtility.DrawPoint(rect, i, _levelCount, _sawtoothMultipliers[i],
+                    EditorGraphUtility.DrawPoint(rect, i, sawtoothLen, _sawtoothMultipliers[i],
                         minY, maxY, new Color(1f, 0.3f, 0.2f), 4f);
                 else if (_sawtoothTypes[i] == LevelType.Breather)
-                    EditorGraphUtility.DrawPoint(rect, i, _levelCount, _sawtoothMultipliers[i],
+                    EditorGraphUtility.DrawPoint(rect, i, sawtoothLen, _sawtoothMultipliers[i],
                         minY, maxY, new Color(0.2f, 0.9f, 0.9f), 4f);
             }
 
