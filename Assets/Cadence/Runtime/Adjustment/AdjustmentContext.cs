@@ -42,6 +42,9 @@ namespace Cadence
         /// <summary>Zero-based global level index for the upcoming level.</summary>
         public int CurrentLevelIndex;
 
+        /// <summary>Number of levels the player has completed in the current play session.</summary>
+        public int LevelsThisSession;
+
         /// <summary>Current player archetype classification with per-archetype confidence scores.</summary>
         public PlayerArchetypeReading ArchetypeReading;
 

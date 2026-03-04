@@ -10,15 +10,28 @@ namespace Cadence
         /// Returns the default configuration for the given level type, including primary parameter,
         /// adjustment scale, and whether DDA and mid-session detection are enabled.
         /// </summary>
-        public static LevelTypeConfig GetDefaults(LevelType type) => type switch
+        public static LevelTypeConfig GetDefaults(LevelType type)
         {
-            LevelType.MoveLimited    => new LevelTypeConfig(type, "move_limit", 1f, true, true),
-            LevelType.TimeLimited    => new LevelTypeConfig(type, "time_limit", 1f, true, true),
-            LevelType.GoalCollection => new LevelTypeConfig(type, "goal_count", 0.8f, true, true),
-            LevelType.Boss           => new LevelTypeConfig(type, null, 0.3f, true, true),
-            LevelType.Breather       => new LevelTypeConfig(type, null, 0.5f, false, true),
-            LevelType.Tutorial       => new LevelTypeConfig(type, null, 0f, false, false),
-            _                        => new LevelTypeConfig(type, null, 1f, true, true) // Standard
-        };
+            var config = type switch
+            {
+                LevelType.MoveLimited    => new LevelTypeConfig(type, "move_limit", 1f, true, true),
+                LevelType.TimeLimited    => new LevelTypeConfig(type, "time_limit", 1f, true, true),
+                LevelType.GoalCollection => new LevelTypeConfig(type, "goal_count", 0.8f, true, true),
+                LevelType.Boss           => new LevelTypeConfig(type, null, 0.3f, true, true),
+                LevelType.Breather       => new LevelTypeConfig(type, null, 0.5f, false, true),
+                LevelType.Tutorial       => new LevelTypeConfig(type, null, 0f, false, false),
+                _                        => new LevelTypeConfig(type, null, 1f, true, true) // Standard
+            };
+
+            config.SecondaryParameterKeys = type switch
+            {
+                LevelType.MoveLimited    => new System.Collections.Generic.List<string> { "board_complexity", "color_count" },
+                LevelType.TimeLimited    => new System.Collections.Generic.List<string> { "spawn_rate", "board_complexity" },
+                LevelType.GoalCollection => new System.Collections.Generic.List<string> { "goal_variety", "board_complexity" },
+                _                        => null
+            };
+
+            return config;
+        }
     }
 }

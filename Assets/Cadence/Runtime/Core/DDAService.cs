@@ -187,6 +187,10 @@ namespace Cadence
             };
 
             _lastProposal = _adjustmentEngine.Evaluate(context);
+
+            if (_lastProposal != null && _lastProposal.Deltas.Count > 0)
+                _adjustmentEngine.RecordAdjustment(_lastProposal, Time.unscaledTime);
+
             return _lastProposal;
         }
 

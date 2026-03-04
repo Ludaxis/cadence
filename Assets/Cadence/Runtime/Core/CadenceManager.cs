@@ -15,6 +15,15 @@ namespace Cadence
     [DefaultExecutionOrder(-100)]
     public class CadenceManager : MonoBehaviour
     {
+        // ───────────────────── Domain Reload Fix ─────────────────────
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStaticState()
+        {
+            _instance = null;
+            OnServiceInitialized = null;
+        }
+
         // ───────────────────── Singleton ─────────────────────
 
         private static CadenceManager _instance;
@@ -109,6 +118,12 @@ namespace Cadence
             if (pauseStatus) SaveProfileIfNeeded();
         }
 
+        private void OnApplicationQuit()
+        {
+            SaveProfileIfNeeded();
+            PlayerPrefs.Save();
+        }
+
         private void OnDestroy()
         {
             if (_instance != this) return;
@@ -136,7 +151,14 @@ namespace Cadence
                 string json = ProfilePersistence.Load(_profileKey);
                 if (json != null)
                 {
-                    service.LoadProfile(json);
+                    try
+                    {
+                        service.LoadProfile(json);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Debug.LogWarning($"[Cadence] Failed to load profile, starting fresh: {ex.Message}");
+                    }
                     if (_verboseLogging)
                         Debug.Log("[Cadence] Player profile loaded from PlayerPrefs.");
                 }

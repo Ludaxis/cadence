@@ -48,6 +48,13 @@ namespace Cadence.Rules
                 amount = _config != null ? _config.LossStreakEaseAmount : 0.10f;
                 float extra = Mathf.Max(0, lossStreak - lossThreshold) * 0.02f;
                 amount += extra;
+
+                // Scale by loss quality: close losses need less easing, blowouts need more
+                float avgLossEfficiency = GetRecentLossEfficiency(context, lossStreak);
+                float qualityScale = avgLossEfficiency > 0.5f
+                    ? Mathf.Lerp(1.0f, 0.5f, (avgLossEfficiency - 0.5f) * 2f)  // Close: 50-100%
+                    : Mathf.Lerp(1.0f, 1.3f, (0.5f - avgLossEfficiency) * 2f); // Blowout: 100-130%
+                amount *= qualityScale;
             }
             else if (winStreak >= winThreshold)
             {
@@ -92,6 +99,30 @@ namespace Cadence.Rules
                     RuleName = RuleName
                 });
             }
+        }
+
+        private static float GetRecentLossEfficiency(AdjustmentContext context, int streakLength)
+        {
+            if (context.RecentHistory == null || context.RecentHistory.Count == 0)
+                return 0.5f;
+
+            float sum = 0f;
+            int count = 0;
+            for (int i = context.RecentHistory.Count - 1; i >= 0 && count < streakLength; i--)
+            {
+                var entry = context.RecentHistory[i];
+                if (entry.Outcome < 0.5f) // Loss
+                {
+                    sum += entry.Efficiency;
+                    count++;
+                }
+                else
+                {
+                    break; // Streak ended
+                }
+            }
+
+            return count > 0 ? sum / count : 0.5f;
         }
     }
 }

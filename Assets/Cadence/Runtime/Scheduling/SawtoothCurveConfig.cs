@@ -33,7 +33,7 @@ namespace Cadence
         [Header("Cycle Shape — shape and intensity of each difficulty wave")]
         [Tooltip("Number of levels in one complete sawtooth cycle. 10 = every 10 levels, difficulty resets with boss at level 9, breather at level 10. Shorter (5-8) = more frequent tension/relief. Longer (15-25) = slower pacing.")]
 #endif
-        [Range(5, 50)] public int Period = 10;
+        [Range(5, 50)] public int Period = 7;
 
 #if ODIN_INSPECTOR
         [BoxGroup("Cycle Shape")]
@@ -127,6 +127,17 @@ namespace Cadence
         [Tooltip("Baseline Drift per Cycle. Baseline multiplier increase per completed cycle. 0.02 = 2% harder each cycle. After 10 cycles = 20% harder baseline. 0 = no long-term progression (each cycle identical).")]
 #endif
         [Range(0f, 0.1f)] public float BaselineDriftPerCycle = 0.02f;
+
+#if ODIN_INSPECTOR
+        [BoxGroup("Long-Term Progression")]
+        [PropertyTooltip("Maximum total baseline drift allowed.\n" +
+                          "0.5 = baseline can never exceed 1.5x of original.\n" +
+                          "Prevents late-game from becoming impossibly hard.")]
+        [SuffixLabel("max total", Overlay = true)]
+#else
+        [Tooltip("Max Baseline Drift. Maximum total baseline drift. 0.5 = baseline capped at 1.5x. Prevents late-game from becoming impossibly hard.")]
+#endif
+        [Range(0f, 2f)] public float MaxBaselineDrift = 0.5f;
 
 #if UNITY_EDITOR
         private void OnValidate()

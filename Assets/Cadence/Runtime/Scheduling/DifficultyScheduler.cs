@@ -24,6 +24,7 @@ namespace Cadence
             int posInCycle = levelIndex % period;
 
             float baselineDrift = cycle * _config.BaselineDriftPerCycle;
+            baselineDrift = Mathf.Min(baselineDrift, _config.MaxBaselineDrift);
             var suggestedType = GetSuggestedTypeInternal(posInCycle, period);
 
             float multiplier;

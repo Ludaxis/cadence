@@ -34,7 +34,7 @@ namespace Cadence
         private float _smoothedEngagement;
 
         // Track last processed signal count to detect new signals
-        private int _lastProcessedSignalCount;
+        private long _lastProcessedSignalCount;
 
         public FlowReading CurrentReading => _currentReading;
         public event Action<FlowReading> OnFlowStateChanged;
@@ -72,21 +72,23 @@ namespace Cadence
             if (recentSignals == null || recentSignals.Count == 0) return;
 
             // Process only new signals since last tick
-            int currentCount = recentSignals.Count;
-            int newSignals = currentCount - _lastProcessedSignalCount;
-            if (newSignals <= 0)
+            long totalPushed = recentSignals.TotalPushed;
+            long newSignalCount = totalPushed - _lastProcessedSignalCount;
+            if (newSignalCount <= 0)
             {
-                _lastProcessedSignalCount = currentCount;
+                _lastProcessedSignalCount = totalPushed;
                 return;
             }
+
+            // Clamp to buffer size (can't read signals that were overwritten)
+            int newSignals = (int)System.Math.Min(newSignalCount, recentSignals.Count);
 
             // Process new signals (from oldest new to newest)
             for (int i = newSignals - 1; i >= 0; i--)
             {
-                var entry = recentSignals[i];
-                ProcessSignal(entry);
+                ProcessSignal(recentSignals[i]);
             }
-            _lastProcessedSignalCount = currentCount;
+            _lastProcessedSignalCount = totalPushed;
 
             // Update scores with EMA smoothing
             float alpha = _config != null ? _config.ExponentialAlpha : 0.3f;

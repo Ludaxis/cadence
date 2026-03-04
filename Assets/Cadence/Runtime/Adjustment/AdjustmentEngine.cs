@@ -17,8 +17,6 @@ namespace Cadence
 
         private readonly AdjustmentEngineConfig _config;
         private readonly List<IAdjustmentRule> _rules = new List<IAdjustmentRule>();
-        private readonly Dictionary<string, float> _lastAdjustmentTime = new Dictionary<string, float>();
-        private float _lastGlobalAdjustmentTime = float.NegativeInfinity;
 
         public AdjustmentEngine(AdjustmentEngineConfig config)
         {
@@ -28,6 +26,7 @@ namespace Cadence
             _rules.Add(new Rules.FlowChannelRule(config));
             _rules.Add(new Rules.StreakDamperRule(config));
             _rules.Add(new Rules.FrustrationReliefRule(config));
+            _rules.Add(new Rules.NewPlayerRule(config));
             _rules.Add(new Rules.CooldownRule(config));
         }
 
@@ -94,25 +93,14 @@ namespace Cadence
         /// </summary>
         public void RecordAdjustment(AdjustmentProposal proposal, float currentTime)
         {
-            _lastGlobalAdjustmentTime = currentTime;
-            for (int i = 0; i < proposal.Deltas.Count; i++)
+            for (int i = 0; i < _rules.Count; i++)
             {
-                _lastAdjustmentTime[proposal.Deltas[i].ParameterKey] = currentTime;
+                if (_rules[i] is Rules.CooldownRule cooldown)
+                {
+                    cooldown.RecordAdjustment(proposal, currentTime);
+                    break;
+                }
             }
-        }
-
-        public bool IsOnGlobalCooldown(float currentTime)
-        {
-            float cooldown = _config != null ? _config.GlobalCooldownSeconds : DefaultGlobalCooldown;
-            return currentTime - _lastGlobalAdjustmentTime < cooldown;
-        }
-
-        public bool IsParameterOnCooldown(string paramKey, float currentTime)
-        {
-            float cooldown = _config != null ? _config.PerParameterCooldownSeconds : DefaultPerParamCooldown;
-            if (_lastAdjustmentTime.TryGetValue(paramKey, out float lastTime))
-                return currentTime - lastTime < cooldown;
-            return false;
         }
 
         private static void ApplySawtoothScaling(AdjustmentProposal proposal, float multiplier)
@@ -133,13 +121,12 @@ namespace Cadence
             for (int i = 0; i < proposal.Deltas.Count; i++)
             {
                 var delta = proposal.Deltas[i];
-                float absDelta = Mathf.Abs(delta.Delta);
-                if (absDelta > maxDelta && delta.CurrentValue != 0f)
+                if (delta.CurrentValue == 0f) continue;
+                float ratio = Mathf.Abs(delta.Delta) / Mathf.Abs(delta.CurrentValue);
+                if (ratio > maxDelta)
                 {
                     float maxAbsChange = Mathf.Abs(delta.CurrentValue) * maxDelta;
-                    float clampedValue = delta.CurrentValue +
-                        Mathf.Sign(delta.Delta) * maxAbsChange;
-                    delta.ProposedValue = clampedValue;
+                    delta.ProposedValue = delta.CurrentValue + Mathf.Sign(delta.Delta) * maxAbsChange;
                     proposal.Deltas[i] = delta;
                 }
             }

@@ -119,7 +119,23 @@ namespace Cadence
         public void Deserialize(string json)
         {
             if (string.IsNullOrEmpty(json)) return;
-            JsonUtility.FromJsonOverwrite(json, _profile);
+            try
+            {
+                JsonUtility.FromJsonOverwrite(json, _profile);
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning($"[Cadence] Failed to deserialize player profile, resetting to defaults: {ex.Message}");
+                _profile.Rating = _config != null ? _config.InitialRating : PlayerSkillProfile.DefaultRating;
+                _profile.Deviation = _config != null ? _config.InitialDeviation : PlayerSkillProfile.DefaultDeviation;
+                _profile.Volatility = _config != null ? _config.InitialVolatility : PlayerSkillProfile.DefaultVolatility;
+                _profile.SessionsCompleted = 0;
+                _profile.TotalMoves = 0;
+                _profile.AverageEfficiency = 0f;
+                _profile.AverageOutcome = 0f;
+                _profile.LastSessionUtcTicks = 0;
+                _profile.RecentHistory.Clear();
+            }
         }
 
         /// <summary>
@@ -161,7 +177,7 @@ namespace Cadence
             {
                 int k = 1;
                 B = a - k * tau;
-                while (VolatilityF(B, delta2, phi2, v, a, tau2) < 0)
+                while (VolatilityF(B, delta2, phi2, v, a, tau2) < 0 && k < 50)
                 {
                     k++;
                     B = a - k * tau;
@@ -200,9 +216,25 @@ namespace Cadence
             double newMu = mu + newPhi * newPhi * gPhiJ * (actualScore - eVal);
 
             // Step 5: Convert back to Glicko-1 scale
+            float prevRating = _profile.Rating;
+            float prevDeviation = _profile.Deviation;
+            float prevVolatility = _profile.Volatility;
+
             _profile.Rating = (float)(newMu * GlickoScale + GlickoBaselineRating);
             _profile.Deviation = (float)(newPhi * GlickoScale);
             _profile.Volatility = (float)newSigma;
+
+            // NaN/Infinity guard
+            if (float.IsNaN(_profile.Rating) || float.IsInfinity(_profile.Rating) ||
+                float.IsNaN(_profile.Deviation) || float.IsInfinity(_profile.Deviation) ||
+                float.IsNaN(_profile.Volatility) || float.IsInfinity(_profile.Volatility))
+            {
+                Debug.LogWarning("[Cadence] Glicko-2 produced invalid values, reverting to previous state.");
+                _profile.Rating = prevRating;
+                _profile.Deviation = prevDeviation;
+                _profile.Volatility = prevVolatility;
+                return;
+            }
 
             // Clamp deviation
             float maxDev = _config != null ? _config.MaxDeviation : PlayerSkillProfile.DefaultDeviation;

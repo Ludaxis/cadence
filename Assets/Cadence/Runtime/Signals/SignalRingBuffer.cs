@@ -12,12 +12,16 @@ namespace Cadence
         private readonly SignalEntry[] _buffer;
         private int _head;
         private int _count;
+        private long _totalPushed;
 
         /// <summary>Maximum number of entries the buffer can hold.</summary>
         public int Capacity { get; }
 
         /// <summary>Current number of entries in the buffer (up to <see cref="Capacity"/>).</summary>
         public int Count => _count;
+
+        /// <summary>Total number of entries ever pushed into the buffer (monotonically increasing).</summary>
+        public long TotalPushed => _totalPushed;
 
         /// <summary>
         /// Creates a new ring buffer with the specified capacity.
@@ -38,6 +42,7 @@ namespace Cadence
         public void Push(SignalEntry entry)
         {
             _buffer[_head] = entry;
+            _totalPushed++;
             _head = (_head + 1) % Capacity;
             if (_count < Capacity) _count++;
         }
@@ -117,6 +122,7 @@ namespace Cadence
         {
             _head = 0;
             _count = 0;
+            _totalPushed = 0;
         }
     }
 }

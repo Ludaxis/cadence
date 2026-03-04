@@ -31,6 +31,12 @@ namespace Cadence.Rules
             float minWR = _config != null ? _config.TargetWinRateMin : 0.3f;
             float maxWR = _config != null ? _config.TargetWinRateMax : 0.7f;
 
+            // Override with progression curves if configured
+            if (_config != null && _config.TargetWinRateMinCurve != null && _config.TargetWinRateMinCurve.length >= 2)
+                minWR = _config.TargetWinRateMinCurve.Evaluate(context.Profile.SessionsCompleted);
+            if (_config != null && _config.TargetWinRateMaxCurve != null && _config.TargetWinRateMaxCurve.length >= 2)
+                maxWR = _config.TargetWinRateMaxCurve.Evaluate(context.Profile.SessionsCompleted);
+
             if (winRate >= minWR && winRate <= maxWR) return;
 
             // Compute how far outside the band we are

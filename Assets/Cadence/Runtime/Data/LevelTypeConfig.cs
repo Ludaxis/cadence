@@ -37,6 +37,12 @@ namespace Cadence
         public string PrimaryParameterKey;
 
 #if ODIN_INSPECTOR
+        [PropertyTooltip("Secondary parameters that receive reduced adjustments (50% of primary).\n" +
+                          "These provide supporting difficulty changes alongside the primary parameter.")]
+#endif
+        public System.Collections.Generic.List<string> SecondaryParameterKeys;
+
+#if ODIN_INSPECTOR
         [PropertyTooltip("Multiplier for all adjustment deltas on this level type.\n\n" +
                           "1.0 = Standard (full adjustment)\n" +
                           "0.8 = GoalCollection (slightly conservative)\n" +

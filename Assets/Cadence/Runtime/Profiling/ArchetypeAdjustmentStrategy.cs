@@ -17,7 +17,7 @@ namespace Cadence
             PlayerArchetype.CarefulThinker    => 0.8f,
             PlayerArchetype.StrugglingLearner => 0.6f,
             PlayerArchetype.BoosterDependent  => 0.9f,
-            PlayerArchetype.ChurnRisk         => 0.5f,
+            PlayerArchetype.ChurnRisk         => 1.4f,
             _                                 => 1.0f
         };
 

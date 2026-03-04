@@ -59,6 +59,26 @@ namespace Cadence
 
 #if ODIN_INSPECTOR
         [FoldoutGroup("Flow Channel Rule")]
+        [PropertyTooltip("Optional curve mapping sessions completed (X) to minimum win rate (Y).\n" +
+                          "If set (2+ keys), overrides flat TargetWinRateMin.\n" +
+                          "Allows tighter band for new players, wider for veterans.")]
+#else
+        [Tooltip("Optional curve: sessions completed (X) to min win rate (Y). Overrides flat TargetWinRateMin when set (2+ keys).")]
+#endif
+        public AnimationCurve TargetWinRateMinCurve = new AnimationCurve();
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Flow Channel Rule")]
+        [PropertyTooltip("Optional curve mapping sessions completed (X) to maximum win rate (Y).\n" +
+                          "If set (2+ keys), overrides flat TargetWinRateMax.\n" +
+                          "Allows tighter band for new players, wider for veterans.")]
+#else
+        [Tooltip("Optional curve: sessions completed (X) to max win rate (Y). Overrides flat TargetWinRateMax when set (2+ keys).")]
+#endif
+        public AnimationCurve TargetWinRateMaxCurve = new AnimationCurve();
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Flow Channel Rule")]
         [PropertyTooltip("Maps distance from the win rate band edge (X: 0-1) to adjustment magnitude (Y: 0-1).\n\n" +
                           "Linear = proportional response.\n" +
                           "Ease-in = gentle near the band, aggressive far from it.\n" +
