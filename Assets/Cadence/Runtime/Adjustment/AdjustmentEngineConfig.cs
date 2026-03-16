@@ -9,16 +9,23 @@ namespace Cadence
 #if ODIN_INSPECTOR
     [Title("Adjustment Engine", "Rules that modify difficulty parameters", TitleAlignments.Centered)]
     [InfoBox(
-        "Four rules are evaluated in order after each session:\n\n" +
+        "Six rules are evaluated in order after each session:\n\n" +
         "1. Flow Channel Rule — Nudges win rate toward the target band\n" +
         "2. Streak Damper Rule — Eases after loss streaks, hardens after win streaks\n" +
         "3. Frustration Relief Rule — Emergency easing when FrustrationScore > threshold\n" +
-        "4. Cooldown Rule — Enforces minimum time between adjustments\n\n" +
+        "4. Session Fatigue Rule — Gently eases long contiguous play sessions\n" +
+        "5. New Player Rule — Adds onboarding protection for the first sessions\n" +
+        "6. Cooldown Rule — Enforces minimum time between adjustments\n\n" +
         "All deltas are clamped by MaxDeltaPerAdjustment, then scaled by the sawtooth multiplier (if configured).",
         InfoMessageType.None)]
 #endif
     public class AdjustmentEngineConfig : ScriptableObject
     {
+        public const int DefaultSessionFatigueThresholdLevels = 8;
+        public const float DefaultSessionFatigueEasePerLevel = 0.02f;
+        public const float DefaultSessionFatigueMaxEase = 0.10f;
+        public const float DefaultSessionFatigueResetGapMinutes = 15f;
+
         // ───────────────────── Flow Channel ─────────────────────
 
 #if ODIN_INSPECTOR
@@ -26,9 +33,9 @@ namespace Cadence
         [DetailedInfoBox("How Flow Channel Works",
             "Activates when the player's win rate drifts outside the target band.\n\n" +
             "  IF AverageOutcome < TargetWinRateMin (too hard):\n" +
-            "    -> Ease difficulty (negative delta)\n" +
+            "    -> Ease difficulty (semantic easier direction)\n" +
             "  IF AverageOutcome > TargetWinRateMax (too easy):\n" +
-            "    -> Harden difficulty (positive delta)\n\n" +
+            "    -> Harden difficulty (semantic harder direction)\n\n" +
             "Delta magnitude = DifficultyAdjustmentCurve(distance from band edge)\n" +
             "                 * LevelTypeConfig.AdjustmentScale\n" +
             "                 * ArchetypeAdjustmentStrategy.ScaleModifier\n\n" +
@@ -178,6 +185,67 @@ namespace Cadence
 #endif
         [Range(0f, 1f)] public float FrustrationReliefThreshold = 0.7f;
 
+        // ───────────────────── Session Fatigue ─────────────────────
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Session Fatigue Rule")]
+        [DetailedInfoBox("How Session Fatigue Works",
+            "Applies gentle easing when the player has completed many levels in one contiguous play session.\n\n" +
+            "The play session resets after a configurable inactivity gap.\n" +
+            "Threshold is measured in completed levels. After the threshold is reached,\n" +
+            "the next-level proposal eases by EasePerLevel each level, capped by MaxEase.\n\n" +
+            "This rule runs before cooldown filtering.")]
+        [LabelText("Enable Session Fatigue")]
+        [ToggleLeft]
+#else
+        [Space(10)]
+        [Header("Session Fatigue Rule — gentle easing for long mobile play sessions")]
+        [Tooltip("Enable the built-in session fatigue rule. It eases the next level after many contiguous completed levels and resets after a configurable idle gap.")]
+#endif
+        public bool EnableSessionFatigueRule = true;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Session Fatigue Rule")]
+        [LabelText("Fatigue Threshold Levels")]
+        [SuffixLabel("completed", Overlay = true)]
+        [PropertyTooltip("Number of completed levels in the current contiguous play session before the next-level easing begins.")]
+        [PropertyRange(1, 50)]
+#else
+        [Tooltip("Completed levels before session-fatigue easing begins. 8 means the 9th upcoming level starts getting eased.")]
+        [Range(1, 50)]
+#endif
+        public int SessionFatigueThresholdLevels = DefaultSessionFatigueThresholdLevels;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Session Fatigue Rule")]
+        [LabelText("Ease Per Level")]
+        [SuffixLabel("of current value", Overlay = true)]
+        [PropertyTooltip("Additional semantic easing applied for each level beyond the threshold.")]
+#else
+        [Tooltip("Additional semantic easing applied for each completed level after the threshold.")]
+#endif
+        [Range(0f, 0.2f)] public float SessionFatigueEasePerLevel = DefaultSessionFatigueEasePerLevel;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Session Fatigue Rule")]
+        [LabelText("Max Session Fatigue Ease")]
+        [SuffixLabel("of current value", Overlay = true)]
+        [PropertyTooltip("Upper cap for the total easing from session fatigue.")]
+#else
+        [Tooltip("Maximum total easing that the session fatigue rule can apply.")]
+#endif
+        [Range(0f, 0.3f)] public float SessionFatigueMaxEase = DefaultSessionFatigueMaxEase;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Session Fatigue Rule")]
+        [LabelText("Fatigue Reset Gap")]
+        [SuffixLabel("minutes", Overlay = true)]
+        [PropertyTooltip("If the player is idle between completed levels longer than this, the contiguous play-session fatigue counter resets.")]
+#else
+        [Tooltip("Idle gap between completed levels that resets the contiguous play-session counter used by the fatigue rule.")]
+#endif
+        [Range(0f, 120f)] public float SessionFatigueResetGapMinutes = DefaultSessionFatigueResetGapMinutes;
+
         // ───────────────────── Cooldown ─────────────────────
 
 #if ODIN_INSPECTOR
@@ -237,6 +305,10 @@ namespace Cadence
             GlobalCooldownSeconds = Mathf.Max(0f, GlobalCooldownSeconds);
             PerParameterCooldownSeconds = Mathf.Max(0f, PerParameterCooldownSeconds);
             MaxDeltaPerAdjustment = Mathf.Clamp(MaxDeltaPerAdjustment, 0.01f, 0.5f);
+            SessionFatigueThresholdLevels = Mathf.Max(1, SessionFatigueThresholdLevels);
+            SessionFatigueEasePerLevel = Mathf.Clamp(SessionFatigueEasePerLevel, 0f, 0.2f);
+            SessionFatigueMaxEase = Mathf.Clamp(SessionFatigueMaxEase, 0f, 0.3f);
+            SessionFatigueResetGapMinutes = Mathf.Max(0f, SessionFatigueResetGapMinutes);
         }
 #endif
     }

@@ -14,6 +14,12 @@ namespace Cadence.Editor
         public float PlayerDeviation;
         public FlowState FlowState;
         public float RollingWinRate;
+        public int LevelsThisSession;
+        public bool SessionFatigueActive;
+        public bool WasAbandoned;
+        public float MeanInterMoveInterval;
+        public float InputAccuracy01;
+        public float ResourceEfficiency01;
         public Dictionary<string, float> AdjustedParams;
         public float AdjustmentDelta;
     }

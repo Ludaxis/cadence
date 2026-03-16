@@ -22,6 +22,13 @@ namespace Cadence
         private const float FrustrationVarianceWeight = 0.25f;
         private const float FrustrationPauseWeight = 0.20f;
         private const float FrustrationEfficiencyWeight = 0.25f;
+        private const float InputAccuracySkillEfficiencyWeight = 0.75f;
+        private const float InputAccuracySkillWeight = 0.25f;
+        private const float FrustrationWasteWithInputWeight = 0.27f;
+        private const float FrustrationVarianceWithInputWeight = 0.23f;
+        private const float FrustrationPauseWithInputWeight = 0.18f;
+        private const float FrustrationEfficiencyWithInputWeight = 0.22f;
+        private const float FrustrationInputAccuracyWeight = 0.10f;
 
         public SessionSummary Analyze(SignalBatch batch)
         {
@@ -43,12 +50,18 @@ namespace Cadence
             float lastMoveTime = -1f;
             float firstMoveTime = -1f;
             float lastSignalTime = 0f;
+            bool useExplicitIntervals = false;
             int pauseCount = 0;
             int powerUpsUsed = 0;
             int attemptNumber = 0;
             float sessionGapDays = 0f;
             float outcomeValue = 0f;
             bool hasOutcome = false;
+            bool explicitAbandoned = false;
+            float inputAccuracySum = 0f;
+            int inputAccuracyCount = 0;
+            float resourceEfficiencySum = 0f;
+            int resourceEfficiencyCount = 0;
 
             for (int i = 0; i < entries.Count; i++)
             {
@@ -61,9 +74,10 @@ namespace Cadence
                         moveCount++;
                         float moveTime = e.Timestamp.SessionTime;
                         if (firstMoveTime < 0f) firstMoveTime = moveTime;
-                        if (lastMoveTime >= 0f)
+                        if (!useExplicitIntervals && lastMoveTime >= 0f)
                             intervalStats.Add(moveTime - lastMoveTime);
-                        lastMoveTime = moveTime;
+                        if (!useExplicitIntervals)
+                            lastMoveTime = moveTime;
                         break;
 
                     case SignalKeys.MoveOptimal:
@@ -79,7 +93,15 @@ namespace Cadence
                         break;
 
                     case SignalKeys.InterMoveInterval:
-                        // If the game sends explicit intervals, use those instead
+                        if (!useExplicitIntervals)
+                        {
+                            useExplicitIntervals = true;
+                            intervalStats.Reset();
+                            lastMoveTime = -1f;
+                        }
+
+                        if (e.Value > 0f)
+                            intervalStats.Add(e.Value);
                         break;
 
                     case SignalKeys.HesitationTime:
@@ -107,6 +129,20 @@ namespace Cadence
                         sessionGapDays = e.Value;
                         break;
 
+                    case SignalKeys.LevelAbandoned:
+                        explicitAbandoned = true;
+                        break;
+
+                    case SignalKeys.InputAccuracy:
+                        inputAccuracySum += Mathf.Clamp01(e.Value);
+                        inputAccuracyCount++;
+                        break;
+
+                    case SignalKeys.ResourceEfficiency:
+                        resourceEfficiencySum += Mathf.Clamp01(e.Value);
+                        resourceEfficiencyCount++;
+                        break;
+
                     case SignalKeys.SessionOutcome:
                         outcomeValue = e.Value;
                         hasOutcome = true;
@@ -119,7 +155,11 @@ namespace Cadence
             summary.Duration = lastSignalTime;
 
             // Outcome
-            if (hasOutcome)
+            if (explicitAbandoned)
+            {
+                summary.Outcome = SessionOutcome.Abandoned;
+            }
+            else if (hasOutcome)
             {
                 if (outcomeValue > 0.5f) summary.Outcome = SessionOutcome.Win;
                 else if (outcomeValue < -0.5f) summary.Outcome = SessionOutcome.Abandoned;
@@ -130,6 +170,17 @@ namespace Cadence
             summary.MoveEfficiency = moveCount > 0
                 ? Mathf.Clamp01((float)optimalMoves / moveCount)
                 : 0f;
+            summary.HasInputAccuracy = inputAccuracyCount > 0;
+            summary.InputAccuracy01 = summary.HasInputAccuracy
+                ? inputAccuracySum / inputAccuracyCount
+                : 0f;
+            summary.HasResourceEfficiency = resourceEfficiencyCount > 0;
+            summary.ResourceEfficiency01 = summary.HasResourceEfficiency
+                ? resourceEfficiencySum / resourceEfficiencyCount
+                : 0f;
+            summary.EffectiveEfficiency01 = summary.HasResourceEfficiency
+                ? Mathf.Clamp01((summary.MoveEfficiency + summary.ResourceEfficiency01) * 0.5f)
+                : summary.MoveEfficiency;
             float totalResources = moveCount > 0 ? moveCount : 1f;
             summary.WasteRatio = totalWaste / totalResources;
             summary.ProgressRate = moveCount > 0 ? totalProgress / moveCount : 0f;
@@ -162,7 +213,15 @@ namespace Cadence
         private static float ComputeSkillScore(SessionSummary s)
         {
             // Weighted blend of efficiency and sequence matching
-            float efficiency = s.MoveEfficiency;
+            float efficiency = s.EffectiveEfficiency01;
+            if (s.HasInputAccuracy)
+            {
+                efficiency = Mathf.Clamp01(
+                    efficiency * InputAccuracySkillEfficiencyWeight +
+                    s.InputAccuracy01 * InputAccuracySkillWeight
+                );
+            }
+
             float sequence = s.SequenceMatchRate;
             return Mathf.Clamp01(efficiency * SkillEfficiencyWeight + sequence * SkillSequenceWeight);
         }
@@ -186,6 +245,19 @@ namespace Cadence
                 : 0f;
             float pauseSignal = Mathf.Clamp01(s.PauseCount * PausePenaltyFactor);
             float efficiencyInverse = 1f - s.MoveEfficiency;
+
+            if (s.HasInputAccuracy)
+            {
+                float inputAccuracyInverse = 1f - s.InputAccuracy01;
+                return Mathf.Clamp01(
+                    wasteSignal * FrustrationWasteWithInputWeight +
+                    varianceSignal * FrustrationVarianceWithInputWeight +
+                    pauseSignal * FrustrationPauseWithInputWeight +
+                    efficiencyInverse * FrustrationEfficiencyWithInputWeight +
+                    inputAccuracyInverse * FrustrationInputAccuracyWeight
+                );
+            }
+
             return Mathf.Clamp01(
                 wasteSignal * FrustrationWasteWeight +
                 varianceSignal * FrustrationVarianceWeight +

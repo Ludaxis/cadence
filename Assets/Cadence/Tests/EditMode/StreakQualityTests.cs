@@ -10,16 +10,9 @@ namespace Cadence.Tests
         [Test]
         public void LossStreak_CloseLosses_LessEasing()
         {
-            var config = ScriptableObject.CreateInstance<AdjustmentEngineConfig>();
-            config.LossStreakThreshold = 3;
-            config.LossStreakEaseAmount = 0.10f;
-            config.WinStreakThreshold = 10; // High to avoid win streak trigger
-            config.GlobalCooldownSeconds = 0f;
-            config.PerParameterCooldownSeconds = 0f;
-            config.TargetWinRateMin = 0.3f;
-            config.TargetWinRateMax = 0.7f;
+            var config = TestFixtureHelper.CreateDefaultConfig();
             config.MaxDeltaPerAdjustment = 0.5f;
-            config.DifficultyAdjustmentCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
+            config.WinStreakThreshold = 10; // High to avoid win streak trigger
 
             var rule = new Cadence.Rules.StreakDamperRule(config);
 
@@ -66,16 +59,10 @@ namespace Cadence.Tests
         [Test]
         public void LossStreak_AverageEfficiency_CalculatedCorrectly()
         {
-            var config = ScriptableObject.CreateInstance<AdjustmentEngineConfig>();
+            var config = TestFixtureHelper.CreateDefaultConfig();
             config.LossStreakThreshold = 2;
-            config.LossStreakEaseAmount = 0.10f;
-            config.WinStreakThreshold = 10;
-            config.GlobalCooldownSeconds = 0f;
-            config.PerParameterCooldownSeconds = 0f;
-            config.TargetWinRateMin = 0.3f;
-            config.TargetWinRateMax = 0.7f;
             config.MaxDeltaPerAdjustment = 0.5f;
-            config.DifficultyAdjustmentCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
+            config.WinStreakThreshold = 10;
 
             var rule = new Cadence.Rules.StreakDamperRule(config);
 
@@ -99,6 +86,57 @@ namespace Cadence.Tests
 
             // With avg efficiency ~0.5, quality scale should be ~1.0 (neutral)
             Assert.Greater(proposal.Deltas.Count, 0, "Should produce deltas for loss streak");
+        }
+
+        [Test]
+        public void WinStreak_DominantWins_MoreHardening()
+        {
+            var config = TestFixtureHelper.CreateDefaultConfig();
+            config.WinStreakThreshold = 3;
+            config.LossStreakThreshold = 10; // High to avoid loss trigger
+            config.MaxDeltaPerAdjustment = 0.5f;
+
+            var rule = new Cadence.Rules.StreakDamperRule(config);
+
+            // Close wins (low efficiency - barely winning)
+            var closeHistory = new List<SessionHistoryEntry>();
+            for (int i = 0; i < 4; i++)
+                closeHistory.Add(new SessionHistoryEntry { Outcome = 1f, Efficiency = 0.3f });
+
+            var closeContext = new AdjustmentContext
+            {
+                Profile = new PlayerSkillProfile { SessionsCompleted = 10, AverageOutcome = 0.8f, RecentHistory = closeHistory },
+                RecentHistory = closeHistory,
+                LevelParameters = new Dictionary<string, float> { { "difficulty", 100f } },
+                LastFlowReading = new FlowReading { State = FlowState.Flow },
+                LevelType = LevelType.Standard,
+                LevelTypeConfig = LevelTypeDefaults.GetDefaults(LevelType.Standard)
+            };
+
+            var closeProposal = new AdjustmentProposal();
+            rule.Evaluate(closeContext, closeProposal);
+
+            // Dominant wins (high efficiency - clearly superior)
+            var dominantHistory = new List<SessionHistoryEntry>();
+            for (int i = 0; i < 4; i++)
+                dominantHistory.Add(new SessionHistoryEntry { Outcome = 1f, Efficiency = 0.95f });
+
+            var dominantContext = new AdjustmentContext
+            {
+                Profile = new PlayerSkillProfile { SessionsCompleted = 10, AverageOutcome = 0.8f, RecentHistory = dominantHistory },
+                RecentHistory = dominantHistory,
+                LevelParameters = new Dictionary<string, float> { { "difficulty", 100f } },
+                LastFlowReading = new FlowReading { State = FlowState.Flow },
+                LevelType = LevelType.Standard,
+                LevelTypeConfig = LevelTypeDefaults.GetDefaults(LevelType.Standard)
+            };
+
+            var dominantProposal = new AdjustmentProposal();
+            rule.Evaluate(dominantContext, dominantProposal);
+
+            // Both should have deltas (win streak hardening)
+            Assert.Greater(closeProposal.Deltas.Count, 0, "Close wins should produce deltas");
+            Assert.Greater(dominantProposal.Deltas.Count, 0, "Dominant wins should produce deltas");
         }
     }
 }

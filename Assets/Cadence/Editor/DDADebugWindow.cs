@@ -101,6 +101,9 @@ namespace Cadence.Editor
             EditorGUILayout.FloatField("Time", _snapshot.SessionTime);
             EditorGUILayout.IntField("Signals", _snapshot.TotalSignals);
             EditorGUILayout.IntField("Ring Buffer", _snapshot.RingBufferCount);
+            EditorGUILayout.IntField("Levels This Session", _snapshot.LevelsThisSession);
+            EditorGUILayout.Toggle("Fatigue Active", _snapshot.SessionFatigueActive);
+            EditorGUILayout.Toggle("Abandon Pending", _snapshot.ExplicitAbandonPending);
             EditorGUI.indentLevel--;
             EditorGUILayout.Space();
         }
@@ -111,7 +114,7 @@ namespace Cadence.Editor
             EditorGUILayout.LabelField("Flow State", EditorStyles.boldLabel);
             EditorGUI.indentLevel++;
 
-            Color stateColor = GetFlowColor(flow.State);
+            Color stateColor = CadenceEditorStyles.GetFlowColor(flow.State);
             var prevColor = GUI.color;
             GUI.color = stateColor;
             EditorGUILayout.EnumPopup("State", flow.State);
@@ -165,9 +168,9 @@ namespace Cadence.Editor
             var p = _snapshot.LastProposal;
             if (p == null || p.Deltas == null || p.Deltas.Count == 0)
             {
-                EditorGUILayout.LabelField("Last Proposal", "None");
-                return;
-            }
+            EditorGUILayout.LabelField("Last Proposal", "None");
+            return;
+        }
 
             EditorGUILayout.LabelField("Last Proposal", EditorStyles.boldLabel);
             EditorGUI.indentLevel++;
@@ -188,16 +191,5 @@ namespace Cadence.Editor
             EditorGUI.indentLevel--;
         }
 
-        private static Color GetFlowColor(FlowState state)
-        {
-            switch (state)
-            {
-                case FlowState.Boredom:     return new Color(0.3f, 0.6f, 1f);
-                case FlowState.Flow:        return new Color(0.2f, 0.9f, 0.3f);
-                case FlowState.Anxiety:     return new Color(1f, 0.8f, 0.2f);
-                case FlowState.Frustration: return new Color(1f, 0.3f, 0.2f);
-                default:                    return Color.gray;
-            }
-        }
     }
 }

@@ -3,27 +3,30 @@ using UnityEngine;
 namespace Cadence.Rules
 {
     /// <summary>
-    /// Applies gentle difficulty easing when the player has played many levels in a single session.
-    /// Eases 2% per level after the 8th, capped at 10%.
-    /// Opt-in: register via AdjustmentEngine.AddRule() — not included in default rules.
+    /// Applies gentle difficulty easing when the player has completed many levels in a contiguous play session.
+    /// Thresholds, scaling, and reset behavior come from <see cref="AdjustmentEngineConfig"/>.
     /// </summary>
     public sealed class SessionFatigueRule : IAdjustmentRule
     {
-        private const int FatigueThreshold = 8;
-        private const float EasePerLevel = 0.02f;
-        private const float MaxEase = 0.10f;
+        private readonly AdjustmentEngineConfig _config;
 
         public string RuleName => "SessionFatigue";
 
+        public SessionFatigueRule(AdjustmentEngineConfig config)
+        {
+            _config = config;
+        }
+
         public bool IsApplicable(AdjustmentContext context)
         {
-            return context.LevelsThisSession >= FatigueThreshold;
+            return IsEnabled() && context.LevelsThisSession >= GetThresholdLevels();
         }
 
         public void Evaluate(AdjustmentContext context, AdjustmentProposal proposal)
         {
-            int levelsOver = context.LevelsThisSession - FatigueThreshold;
-            float easeAmount = Mathf.Min(levelsOver * EasePerLevel, MaxEase);
+            int thresholdLevels = GetThresholdLevels();
+            int fatigueLevels = context.LevelsThisSession - thresholdLevels + 1;
+            float easeAmount = Mathf.Min(fatigueLevels * GetEasePerLevel(), GetMaxEase());
 
             if (context.LevelParameters == null) return;
 
@@ -32,15 +35,38 @@ namespace Cadence.Rules
                 float current = kvp.Value;
                 if (current <= 0f) continue;
 
-                float delta = -current * easeAmount;
-                proposal.Deltas.Add(new ParameterDelta
+                if (ParameterAdjustmentUtility.TryCreateDelta(context, kvp.Key, current,
+                    -easeAmount, RuleName, out var delta))
                 {
-                    ParameterKey = kvp.Key,
-                    CurrentValue = current,
-                    ProposedValue = current + delta,
-                    RuleName = RuleName
-                });
+                    proposal.Deltas.Add(delta);
+                }
             }
+        }
+
+        private bool IsEnabled()
+        {
+            return _config == null || _config.EnableSessionFatigueRule;
+        }
+
+        private int GetThresholdLevels()
+        {
+            return Mathf.Max(1, _config != null
+                ? _config.SessionFatigueThresholdLevels
+                : AdjustmentEngineConfig.DefaultSessionFatigueThresholdLevels);
+        }
+
+        private float GetEasePerLevel()
+        {
+            return _config != null
+                ? Mathf.Max(0f, _config.SessionFatigueEasePerLevel)
+                : AdjustmentEngineConfig.DefaultSessionFatigueEasePerLevel;
+        }
+
+        private float GetMaxEase()
+        {
+            return _config != null
+                ? Mathf.Max(0f, _config.SessionFatigueMaxEase)
+                : AdjustmentEngineConfig.DefaultSessionFatigueMaxEase;
         }
     }
 }

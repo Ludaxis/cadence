@@ -69,7 +69,7 @@ namespace Cadence.Tests
                 { "difficulty", 110f },
                 { "move_limit", 23f }
             };
-            var proposal = _service.GetProposal(nextParams);
+            var proposal = _service.GetProposal(nextParams, LevelType.Standard, 1);
             Assert.IsNotNull(proposal);
         }
 
@@ -172,6 +172,179 @@ namespace Cadence.Tests
 
             var snapshot = _service.GetDebugSnapshot();
             Assert.AreEqual(0, snapshot.TotalSignals);
+        }
+
+        [Test]
+        public void LevelAbandonedSignal_CoercesOutcomeToAbandoned()
+        {
+            var levelParams = new Dictionary<string, float> { { "move_limit", 25f } };
+            _service.BeginSession("level_abandon", levelParams, LevelType.MoveLimited);
+            _service.RecordSignal(SignalKeys.MoveExecuted, 1f, SignalTier.DecisionQuality, 0);
+            _service.RecordSignal(SignalKeys.LevelAbandoned, 1f, SignalTier.RetryMeta);
+
+            _service.EndSession(SessionOutcome.Win);
+
+            var snapshot = _service.GetDebugSnapshot();
+            Assert.AreEqual(SessionOutcome.Abandoned, snapshot.LastSessionSummary.Outcome);
+        }
+
+        [Test]
+        public void ExplicitProposalOverload_UsesProvidedNextLevelType()
+        {
+            var service = CreateServiceForFatigueTests();
+
+            for (int i = 0; i < 8; i++)
+            {
+                service.BeginSession($"mixed_type_{i}",
+                    new Dictionary<string, float> { { "move_limit", 30f } },
+                    LevelType.MoveLimited);
+                service.RecordSignal(SignalKeys.MoveExecuted, 1f, SignalTier.DecisionQuality, 0);
+                service.RecordSignal(SignalKeys.MoveOptimal, i % 2 == 0 ? 1f : 0f,
+                    SignalTier.DecisionQuality, 0);
+                service.EndSession(i % 2 == 0 ? SessionOutcome.Win : SessionOutcome.Lose);
+            }
+
+            var proposal = service.GetProposal(
+                new Dictionary<string, float> { { "time_limit", 30f } },
+                LevelType.TimeLimited,
+                8);
+
+            Assert.IsNotNull(proposal);
+            Assert.AreEqual(31.5f, GetProposedValue(proposal, "time_limit"), 0.01f);
+        }
+
+        [Test]
+        public void SessionFatigue_DefaultRuleTriggersAfterEightCompletedLevels()
+        {
+            var service = CreateServiceForFatigueTests();
+
+            for (int i = 0; i < 8; i++)
+            {
+                service.BeginSession($"fatigue_{i}",
+                    new Dictionary<string, float> { { "move_limit", 30f } },
+                    LevelType.MoveLimited);
+                service.RecordSignal(SignalKeys.MoveExecuted, 1f, SignalTier.DecisionQuality, 0);
+                service.RecordSignal(SignalKeys.MoveOptimal, i % 2 == 0 ? 1f : 0f,
+                    SignalTier.DecisionQuality, 0);
+                service.EndSession(i % 2 == 0 ? SessionOutcome.Win : SessionOutcome.Lose);
+            }
+
+            var proposal = service.GetProposal(
+                new Dictionary<string, float> { { "move_limit", 30f } },
+                LevelType.MoveLimited,
+                8);
+
+            Assert.IsNotNull(proposal);
+            Assert.IsTrue(ContainsRule(proposal, "SessionFatigue"));
+
+            var snapshot = service.GetDebugSnapshot();
+            Assert.AreEqual(8, snapshot.LevelsThisSession);
+            Assert.IsTrue(snapshot.SessionFatigueActive);
+        }
+
+        [UnityTest]
+        public IEnumerator SessionFatigue_ResetsAfterIdleGap()
+        {
+            var config = CreateBaseConfig();
+            config.AdjustmentEngineConfig.TargetWinRateMin = 0f;
+            config.AdjustmentEngineConfig.TargetWinRateMax = 1f;
+            config.AdjustmentEngineConfig.LossStreakThreshold = 99;
+            config.AdjustmentEngineConfig.WinStreakThreshold = 99;
+            config.AdjustmentEngineConfig.FrustrationReliefThreshold = 1f;
+            config.AdjustmentEngineConfig.SessionFatigueThresholdLevels = 1;
+            config.AdjustmentEngineConfig.SessionFatigueEasePerLevel = 0.05f;
+            config.AdjustmentEngineConfig.SessionFatigueMaxEase = 0.10f;
+            config.AdjustmentEngineConfig.SessionFatigueResetGapMinutes = 0.0001f;
+
+            var service = new DDAService(config);
+
+            service.BeginSession("fatigue_reset_1",
+                new Dictionary<string, float> { { "move_limit", 30f } },
+                LevelType.MoveLimited);
+            service.RecordSignal(SignalKeys.MoveExecuted, 1f, SignalTier.DecisionQuality, 0);
+            service.RecordSignal(SignalKeys.MoveOptimal, 1f, SignalTier.DecisionQuality, 0);
+            service.EndSession(SessionOutcome.Win);
+
+            var firstProposal = service.GetProposal(
+                new Dictionary<string, float> { { "move_limit", 30f } },
+                LevelType.MoveLimited,
+                1);
+            float firstMoveLimit = GetProposedValue(firstProposal, "move_limit");
+            Assert.AreEqual(31.5f, firstMoveLimit, 0.01f);
+
+            yield return new WaitForSecondsRealtime(0.02f);
+
+            service.BeginSession("fatigue_reset_2",
+                new Dictionary<string, float> { { "move_limit", 30f } },
+                LevelType.MoveLimited);
+            service.RecordSignal(SignalKeys.MoveExecuted, 1f, SignalTier.DecisionQuality, 0);
+            service.RecordSignal(SignalKeys.MoveOptimal, 1f, SignalTier.DecisionQuality, 0);
+            service.EndSession(SessionOutcome.Win);
+
+            var secondProposal = service.GetProposal(
+                new Dictionary<string, float> { { "move_limit", 30f } },
+                LevelType.MoveLimited,
+                2);
+            float secondMoveLimit = GetProposedValue(secondProposal, "move_limit");
+
+            Assert.AreEqual(31.5f, secondMoveLimit, 0.01f);
+            Assert.AreEqual(1, service.GetDebugSnapshot().LevelsThisSession);
+        }
+
+        private static DDAService CreateServiceForFatigueTests()
+        {
+            var config = CreateBaseConfig();
+            config.AdjustmentEngineConfig.TargetWinRateMin = 0f;
+            config.AdjustmentEngineConfig.TargetWinRateMax = 1f;
+            config.AdjustmentEngineConfig.LossStreakThreshold = 99;
+            config.AdjustmentEngineConfig.WinStreakThreshold = 99;
+            config.AdjustmentEngineConfig.FrustrationReliefThreshold = 1f;
+            return new DDAService(config);
+        }
+
+        private static DDAConfig CreateBaseConfig()
+        {
+            var config = ScriptableObject.CreateInstance<DDAConfig>();
+            config.RingBufferCapacity = 256;
+            config.EnableSignalStorage = false;
+            config.EnableMidSessionDetection = true;
+            config.EnableBetweenSessionAdjustment = true;
+
+            config.FlowDetectorConfig = ScriptableObject.CreateInstance<FlowDetectorConfig>();
+            config.FlowDetectorConfig.WarmupMoves = 3;
+            config.FlowDetectorConfig.HysteresisCount = 2;
+
+            config.PlayerModelConfig = ScriptableObject.CreateInstance<PlayerModelConfig>();
+            config.AdjustmentEngineConfig = ScriptableObject.CreateInstance<AdjustmentEngineConfig>();
+            config.AdjustmentEngineConfig.GlobalCooldownSeconds = 0f;
+            config.AdjustmentEngineConfig.PerParameterCooldownSeconds = 0f;
+            return config;
+        }
+
+        private static bool ContainsRule(AdjustmentProposal proposal, string ruleName)
+        {
+            if (proposal?.Deltas == null) return false;
+            for (int i = 0; i < proposal.Deltas.Count; i++)
+            {
+                if (proposal.Deltas[i].RuleName == ruleName)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static float GetProposedValue(AdjustmentProposal proposal, string parameterKey)
+        {
+            Assert.IsNotNull(proposal);
+            Assert.IsNotNull(proposal.Deltas);
+            for (int i = 0; i < proposal.Deltas.Count; i++)
+            {
+                if (proposal.Deltas[i].ParameterKey == parameterKey)
+                    return proposal.Deltas[i].ProposedValue;
+            }
+
+            Assert.Fail($"No delta found for {parameterKey}");
+            return 0f;
         }
     }
 }

@@ -88,14 +88,11 @@ namespace Cadence.Rules
                 if (primaryKey != null && kvp.Key != primaryKey)
                     paramMagnitude *= 0.5f;
 
-                float delta = current * paramMagnitude * direction * 0.1f;
-                proposal.Deltas.Add(new ParameterDelta
+                if (ParameterAdjustmentUtility.TryCreateDelta(context, kvp.Key, current,
+                    paramMagnitude * direction * 0.1f, RuleName, out var delta))
                 {
-                    ParameterKey = kvp.Key,
-                    CurrentValue = current,
-                    ProposedValue = current + delta,
-                    RuleName = RuleName
-                });
+                    proposal.Deltas.Add(delta);
+                }
             }
         }
     }

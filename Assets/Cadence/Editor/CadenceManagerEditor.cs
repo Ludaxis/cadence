@@ -23,6 +23,11 @@ namespace Cadence.Editor
             _verboseLogging = serializedObject.FindProperty("_verboseLogging");
         }
 
+        public override bool RequiresConstantRepaint()
+        {
+            return Application.isPlaying;
+        }
+
         public override void OnInspectorGUI()
         {
             serializedObject.Update();

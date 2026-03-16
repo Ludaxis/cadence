@@ -6,7 +6,7 @@ namespace Cadence
     /// <summary>
     /// Evaluates all registered <see cref="IAdjustmentRule"/> implementations against a session context
     /// and produces an <see cref="AdjustmentProposal"/> with parameter deltas, sawtooth scaling,
-    /// and safety clamping. Four built-in rules are registered by default.
+    /// and safety clamping. Six built-in rules are registered by default.
     /// </summary>
     public sealed class AdjustmentEngine
     {
@@ -27,16 +27,30 @@ namespace Cadence
             _rules.Add(new Rules.StreakDamperRule(config));
             _rules.Add(new Rules.FrustrationReliefRule(config));
             _rules.Add(new Rules.NewPlayerRule(config));
+            _rules.Add(new Rules.SessionFatigueRule(config));
             _rules.Add(new Rules.CooldownRule(config));
         }
 
         /// <summary>
         /// Registers an additional <see cref="IAdjustmentRule"/> to run during evaluation.
-        /// Custom rules are evaluated after the four built-in rules.
+        /// Custom rules are evaluated after the six built-in rules.
         /// </summary>
         public void AddRule(IAdjustmentRule rule)
         {
+            if (rule == null) return;
             _rules.Add(rule);
+        }
+
+        /// <summary>
+        /// Registers multiple additional <see cref="IAdjustmentRule"/> instances.
+        /// Custom rules are evaluated after the built-in rules, in enumeration order.
+        /// </summary>
+        public void AddRules(IEnumerable<IAdjustmentRule> rules)
+        {
+            if (rules == null) return;
+
+            foreach (var rule in rules)
+                AddRule(rule);
         }
 
         /// <summary>

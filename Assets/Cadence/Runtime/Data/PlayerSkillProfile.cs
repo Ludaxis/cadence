@@ -64,8 +64,9 @@ namespace Cadence
 
 #if ODIN_INSPECTOR
         [BoxGroup("Session Statistics")]
-        [PropertyTooltip("Running average of MoveEfficiency across all sessions.\n" +
-                          "0.0 = never optimal, 1.0 = always optimal.\n" +
+        [PropertyTooltip("Running average of the model-facing session efficiency across all sessions.\n" +
+                          "Uses EffectiveEfficiency01 when resource.efficiency is present, otherwise MoveEfficiency.\n" +
+                          "0.0 = never efficient, 1.0 = always efficient.\n" +
                           "Used by FlowChannelRule and StreakDamperRule.")]
         [ProgressBar(0f, 1f, 0.2f, 0.8f, 0.2f)]
 #endif
@@ -137,7 +138,7 @@ namespace Cadence
     public struct SessionHistoryEntry
     {
 #if ODIN_INSPECTOR
-        [PropertyTooltip("MoveEfficiency for this session (optimal / total moves).")]
+        [PropertyTooltip("Model-facing efficiency for this session. Usually MoveEfficiency, or EffectiveEfficiency01 when resource.efficiency enriches the session.")]
         [ProgressBar(0f, 1f, 0.2f, 0.8f, 0.2f)]
 #endif
         public float Efficiency;

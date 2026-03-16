@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace Cadence
 {
     /// <summary>
@@ -29,5 +31,18 @@ namespace Cadence
         /// <param name="context">Current player state, session history, and level configuration.</param>
         /// <param name="proposal">The proposal to modify with parameter deltas and reason strings.</param>
         void Evaluate(AdjustmentContext context, AdjustmentProposal proposal);
+    }
+
+    /// <summary>
+    /// Provides one or more <see cref="IAdjustmentRule"/> instances for registration on an <see cref="IDDAService"/>.
+    /// Use this when you want to ship a rule pack instead of registering rules one by one.
+    /// </summary>
+    public interface IAdjustmentRuleProvider
+    {
+        /// <summary>
+        /// Creates the rules to register for the current service.
+        /// Returned rules are evaluated after the built-in rules, in enumeration order.
+        /// </summary>
+        IEnumerable<IAdjustmentRule> CreateRules(DDAConfig config);
     }
 }

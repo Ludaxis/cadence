@@ -17,9 +17,9 @@ namespace Cadence.Editor
         private DDAConfig _ddaConfig;
         private int _levelCount = 100;
         private int _seed = 42;
-        private List<ParamEntry> _paramEntries = new List<ParamEntry>
+        private List<CadenceEditorStyles.ParamEntry> _paramEntries = new List<CadenceEditorStyles.ParamEntry>
         {
-            new ParamEntry { Key = "move_limit", Value = 30f }
+            new CadenceEditorStyles.ParamEntry { Key = "move_limit", Value = 30f }
         };
         private bool[] _personaEnabled;
         private PlayerPersona[] _personas;
@@ -60,12 +60,6 @@ namespace Cadence.Editor
         private const float LeftPanelWidth = 250f;
         private const float BottomPanelHeight = 200f;
 
-        [Serializable]
-        private struct ParamEntry
-        {
-            public string Key;
-            public float Value;
-        }
 
         // ════════════════════════════════════════════════════════════
         //  MENU
@@ -151,7 +145,7 @@ namespace Cadence.Editor
             for (int i = 0; i < _paramEntries.Count; i++)
             {
                 EditorGUILayout.BeginHorizontal();
-                _paramEntries[i] = new ParamEntry
+                _paramEntries[i] = new CadenceEditorStyles.ParamEntry
                 {
                     Key = EditorGUILayout.TextField(_paramEntries[i].Key, GUILayout.Width(80)),
                     Value = EditorGUILayout.FloatField(_paramEntries[i].Value)
@@ -164,7 +158,7 @@ namespace Cadence.Editor
                 EditorGUILayout.EndHorizontal();
             }
             if (GUILayout.Button("+ Add Parameter"))
-                _paramEntries.Add(new ParamEntry { Key = "param", Value = 1f });
+                _paramEntries.Add(new CadenceEditorStyles.ParamEntry { Key = "param", Value = 1f });
 
             // Personas
             EditorGUILayout.Space(8);
@@ -611,11 +605,11 @@ namespace Cadence.Editor
 
             // Legend
             EditorGUILayout.BeginHorizontal();
-            DrawLegendSwatch("Flow", new Color(0.2f, 0.8f, 0.3f));
-            DrawLegendSwatch("Boredom", new Color(0.9f, 0.9f, 0.2f));
-            DrawLegendSwatch("Anxiety", new Color(1f, 0.6f, 0.1f));
-            DrawLegendSwatch("Frustration", new Color(0.9f, 0.2f, 0.15f));
-            DrawLegendSwatch("Unknown", new Color(0.3f, 0.3f, 0.3f));
+            DrawLegendSwatch("Flow", CadenceEditorStyles.GetFlowColor(FlowState.Flow));
+            DrawLegendSwatch("Boredom", CadenceEditorStyles.GetFlowColor(FlowState.Boredom));
+            DrawLegendSwatch("Anxiety", CadenceEditorStyles.GetFlowColor(FlowState.Anxiety));
+            DrawLegendSwatch("Frustration", CadenceEditorStyles.GetFlowColor(FlowState.Frustration));
+            DrawLegendSwatch("Unknown", CadenceEditorStyles.GetFlowColor(FlowState.Unknown));
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
 
@@ -630,7 +624,7 @@ namespace Cadence.Editor
                 {
                     var colors = new Color[run.Snapshots.Count];
                     for (int i = 0; i < colors.Length; i++)
-                        colors[i] = GetFlowColor(run.Snapshots[i].FlowState);
+                        colors[i] = CadenceEditorStyles.GetFlowColor(run.Snapshots[i].FlowState);
                     EditorGraphUtility.DrawColorStrip(rowRect, colors);
                 }
             }
@@ -661,6 +655,8 @@ namespace Cadence.Editor
             DrawSortableHeader("Lose Streak", 4, 75);
             DrawSortableHeader("Flow %", 5, 60);
             DrawSortableHeader("Frustration %", 6, 85);
+            DrawSortableHeader("Boredom %", 8, 70);
+            DrawSortableHeader("Anxiety %", 9, 70);
             DrawSortableHeader("Avg Delta", 7, 70);
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();
@@ -692,6 +688,12 @@ namespace Cadence.Editor
                 EditorGUILayout.LabelField(
                     total > 0 ? $"{(float)run.FrustrationCount / total:P0}" : "-",
                     GUILayout.Width(85));
+                EditorGUILayout.LabelField(
+                    total > 0 ? $"{(float)run.BoredomCount / total:P0}" : "-",
+                    GUILayout.Width(70));
+                EditorGUILayout.LabelField(
+                    total > 0 ? $"{(float)run.AnxietyCount / total:P0}" : "-",
+                    GUILayout.Width(70));
                 EditorGUILayout.LabelField($"{run.AverageAdjustmentDelta:F2}",
                     GUILayout.Width(70));
                 GUILayout.FlexibleSpace();
@@ -753,6 +755,8 @@ namespace Cadence.Editor
                 case 5: return (float)run.FlowCount / total;
                 case 6: return (float)run.FrustrationCount / total;
                 case 7: return run.AverageAdjustmentDelta;
+                case 8: return (float)run.BoredomCount / total;
+                case 9: return (float)run.AnxietyCount / total;
                 default: return 0;
             }
         }
@@ -785,20 +789,38 @@ namespace Cadence.Editor
             }
 
             // Run each enabled persona — with DDA and optionally without
-            for (int p = 0; p < _personas.Length; p++)
+            int totalPersonas = 0;
+            for (int pi = 0; pi < _personas.Length; pi++)
+                if (_personaEnabled[pi]) totalPersonas++;
+            int completedPersonas = 0;
+
+            try
             {
-                if (!_personaEnabled[p]) continue;
-
-                var run = SimulatePersona(_personas[p], scheduler, useDDA: true);
-                run.ComputeAggregates();
-                _runs.Add(run);
-
-                if (_showBaseline)
+                for (int p = 0; p < _personas.Length; p++)
                 {
-                    var baseline = SimulatePersona(_personas[p], scheduler, useDDA: false);
-                    baseline.ComputeAggregates();
-                    _baselineRuns.Add(baseline);
+                    if (!_personaEnabled[p]) continue;
+
+                    EditorUtility.DisplayProgressBar("Cadence Simulation",
+                        $"Simulating {_personas[p].Name}... ({completedPersonas + 1}/{totalPersonas})",
+                        (float)completedPersonas / totalPersonas);
+
+                    var run = SimulatePersona(_personas[p], scheduler, useDDA: true);
+                    run.ComputeAggregates();
+                    _runs.Add(run);
+
+                    if (_showBaseline)
+                    {
+                        var baseline = SimulatePersona(_personas[p], scheduler, useDDA: false);
+                        baseline.ComputeAggregates();
+                        _baselineRuns.Add(baseline);
+                    }
+
+                    completedPersonas++;
                 }
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
             }
 
             _hasResults = _runs.Count > 0;
@@ -820,7 +842,6 @@ namespace Cadence.Editor
                     MeanMoveCount = persona.MeanMoveCount,
                     MoveCountVariance = persona.MoveCountVariance,
                     OptimalMoveRatio = persona.OptimalMoveRatio,
-                    MeanSessionTime = persona.MeanSessionTime,
                     MeanInterMoveTime = persona.MeanInterMoveTime,
                     BoosterUseRate = persona.BoosterUseRate,
                     PauseRate = persona.PauseRate,
@@ -837,7 +858,7 @@ namespace Cadence.Editor
             var rng = new System.Random(persona.Name.GetHashCode() ^ _seed);
 
             // Build initial parameter dictionary
-            var baseParams = BuildParamDict();
+            var baseParams = CadenceEditorStyles.BuildParamDict(_paramEntries.ToArray());
             var currentParams = new Dictionary<string, float>(baseParams);
 
             // Rolling win rate window
@@ -852,21 +873,26 @@ namespace Cadence.Editor
                 // Base effective win rate: persona (+ growth) modulated by sawtooth
                 float effectiveWinRate = persona.EffectiveWinRate(i) * (2f - multiplier);
 
-                // DDA parameter shift: the DDA convention is "lower param = easier difficulty."
-                // When DDA DECREASES a param, it intends to help the player → boost win rate.
-                // So paramShift is (base - current) / base: positive when DDA reduced the param.
-                // For baseline runs, currentParams == baseParams so shift is always 0.
+                // DDA parameter shift uses per-parameter semantics so move_limit/time_limit
+                // increases are correctly interpreted as easing.
                 float paramShift = 0f;
+                int paramShiftCount = 0;
+                var levelTypeConfig = LevelTypeDefaults.GetDefaults(levelType);
                 foreach (var kvp in currentParams)
                 {
                     if (baseParams.TryGetValue(kvp.Key, out float baseVal) &&
                         Mathf.Abs(baseVal) > 0.001f)
                     {
-                        paramShift += (baseVal - kvp.Value) / baseVal;
+                        if (!levelTypeConfig.IsParameterAdjustable(kvp.Key))
+                            continue;
+
+                        float easierNumericDirection = -levelTypeConfig.GetNumericDirection(kvp.Key);
+                        paramShift += ((kvp.Value - baseVal) / Mathf.Abs(baseVal)) * easierNumericDirection;
+                        paramShiftCount++;
                     }
                 }
-                if (currentParams.Count > 0)
-                    paramShift /= currentParams.Count;
+                if (paramShiftCount > 0)
+                    paramShift /= paramShiftCount;
 
                 // Diminishing returns: tanh(shift) squashes extreme adjustments.
                 // DDA reduces move_limit 30→27 (−10%): tanh(0.1)=0.100 → +10% win rate boost
@@ -879,6 +905,7 @@ namespace Cadence.Editor
                 effectiveWinRate = Mathf.Clamp(effectiveWinRate, 0.05f, 0.95f);
 
                 bool won = rng.NextDouble() < effectiveWinRate;
+                bool abandoned = !won && ShouldExplicitlyAbandon(persona, rng);
 
                 FlowState flowState = FlowState.Unknown;
                 float adjustmentDelta = 0f;
@@ -889,7 +916,7 @@ namespace Cadence.Editor
                 service.BeginSession("level_" + i,
                     new Dictionary<string, float>(currentParams), levelType);
 
-                InjectSignals(service, persona, won, rng, i);
+                InjectSignals(service, persona, won, abandoned, rng, i);
 
                 float elapsedTime = 0.016f * persona.MeanMoveCount;
                 service.Tick(elapsedTime);
@@ -897,6 +924,7 @@ namespace Cadence.Editor
                 service.EndSession(won ? SessionOutcome.Win : SessionOutcome.Lose);
 
                 var debug = service.GetDebugSnapshot();
+                var sessionSummary = debug.LastSessionSummary;
                 flowState = debug.CurrentFlow.State;
 
                 if (useDDA)
@@ -917,7 +945,7 @@ namespace Cadence.Editor
                             adjustmentDelta += Mathf.Abs(d.ProposedValue - d.CurrentValue);
                     }
 
-                    ApplyProposal(proposal, currentParams);
+                    CadenceEditorStyles.ApplyProposal(proposal, currentParams);
                 }
 
                 var profile = service.PlayerProfile;
@@ -943,6 +971,12 @@ namespace Cadence.Editor
                     PlayerDeviation = playerDeviation,
                     FlowState = flowState,
                     RollingWinRate = rollingWinRate,
+                    LevelsThisSession = debug.LevelsThisSession,
+                    SessionFatigueActive = debug.SessionFatigueActive,
+                    WasAbandoned = sessionSummary.Outcome == SessionOutcome.Abandoned,
+                    MeanInterMoveInterval = sessionSummary.MeanInterMoveInterval,
+                    InputAccuracy01 = sessionSummary.InputAccuracy01,
+                    ResourceEfficiency01 = sessionSummary.ResourceEfficiency01,
                     AdjustedParams = new Dictionary<string, float>(currentParams),
                     AdjustmentDelta = adjustmentDelta
                 });
@@ -952,7 +986,7 @@ namespace Cadence.Editor
         }
 
         private void InjectSignals(DDAService service, PlayerPersona persona,
-            bool won, System.Random rng, int levelIndex)
+            bool won, bool abandoned, System.Random rng, int levelIndex)
         {
             // Determine move count with variance
             int moveCount = Mathf.Max(3, Mathf.RoundToInt(
@@ -963,6 +997,10 @@ namespace Cadence.Editor
                 : Mathf.Clamp01(persona.OptimalMoveRatio - 0.15f);
 
             int optimalCount = Mathf.RoundToInt(moveCount * optimalPct);
+            float inputAccuracy = Mathf.Clamp01(
+                optimalPct + (won ? 0.10f : -0.05f) - persona.PauseRate * 0.10f);
+            float resourceEfficiency = Mathf.Clamp01(
+                optimalPct + (won ? 0.05f : -0.10f) - persona.BoosterUseRate * 0.15f);
 
             for (int m = 0; m < moveCount; m++)
             {
@@ -984,6 +1022,10 @@ namespace Cadence.Editor
 
                 service.RecordSignal(SignalKeys.InterMoveInterval, persona.MeanInterMoveTime,
                     SignalTier.BehavioralTempo, m + 1);
+                service.RecordSignal(SignalKeys.InputAccuracy, inputAccuracy,
+                    SignalTier.RawInput, m + 1);
+                service.RecordSignal(SignalKeys.ResourceEfficiency, resourceEfficiency,
+                    SignalTier.DecisionQuality, m + 1);
                 service.Tick(persona.MeanInterMoveTime);
             }
 
@@ -1002,28 +1044,19 @@ namespace Cadence.Editor
                     SignalTier.BehavioralTempo);
                 service.Tick(2f);
             }
-        }
 
-        private static void ApplyProposal(AdjustmentProposal proposal,
-            Dictionary<string, float> currentParams)
-        {
-            if (proposal?.Deltas == null) return;
-            foreach (var d in proposal.Deltas)
+            if (abandoned)
             {
-                if (currentParams.ContainsKey(d.ParameterKey))
-                    currentParams[d.ParameterKey] = d.ProposedValue;
+                service.RecordSignal(SignalKeys.LevelAbandoned, 1f,
+                    SignalTier.RetryMeta);
             }
         }
 
-        private Dictionary<string, float> BuildParamDict()
+
+        private static bool ShouldExplicitlyAbandon(PlayerPersona persona, System.Random rng)
         {
-            var dict = new Dictionary<string, float>();
-            for (int i = 0; i < _paramEntries.Count; i++)
-            {
-                if (!string.IsNullOrEmpty(_paramEntries[i].Key))
-                    dict[_paramEntries[i].Key] = _paramEntries[i].Value;
-            }
-            return dict;
+            float abandonChance = Mathf.Clamp01(persona.PauseRate * 0.5f + persona.BoosterUseRate * 0.15f);
+            return rng.NextDouble() < abandonChance;
         }
 
         // ════════════════════════════════════════════════════════════
@@ -1040,7 +1073,9 @@ namespace Cadence.Editor
 
             // Header
             sb.Append("Persona,DDA,LevelIndex,LevelType,SawtoothMultiplier,Won,");
-            sb.Append("PlayerRating,PlayerDeviation,FlowState,RollingWinRate,AdjustmentDelta");
+            sb.Append("PlayerRating,PlayerDeviation,FlowState,RollingWinRate,AdjustmentDelta,");
+            sb.Append("LevelsThisSession,SessionFatigueActive,WasAbandoned,MeanInterMoveInterval,");
+            sb.Append("InputAccuracy01,ResourceEfficiency01");
             foreach (var p in _paramEntries)
                 sb.Append("," + p.Key);
             sb.AppendLine();
@@ -1057,7 +1092,10 @@ namespace Cadence.Editor
                     sb.Append($"{baseName},{(isDDA ? "Yes" : "No")},{snap.LevelIndex},{snap.LevelType},");
                     sb.Append($"{snap.SawtoothMultiplier:F4},{(snap.Won ? 1 : 0)},");
                     sb.Append($"{snap.PlayerRating:F1},{snap.PlayerDeviation:F1},");
-                    sb.Append($"{snap.FlowState},{snap.RollingWinRate:F3},{snap.AdjustmentDelta:F4}");
+                    sb.Append($"{snap.FlowState},{snap.RollingWinRate:F3},{snap.AdjustmentDelta:F4},");
+                    sb.Append($"{snap.LevelsThisSession},{(snap.SessionFatigueActive ? 1 : 0)},");
+                    sb.Append($"{(snap.WasAbandoned ? 1 : 0)},{snap.MeanInterMoveInterval:F3},");
+                    sb.Append($"{snap.InputAccuracy01:F3},{snap.ResourceEfficiency01:F3}");
                     foreach (var p in _paramEntries)
                     {
                         float val = 0f;
@@ -1097,16 +1135,5 @@ namespace Cadence.Editor
             EditorGUILayout.LabelField(label, EditorStyles.miniLabel, GUILayout.Width(65));
         }
 
-        private static Color GetFlowColor(FlowState state)
-        {
-            switch (state)
-            {
-                case FlowState.Flow:        return new Color(0.2f, 0.8f, 0.3f);
-                case FlowState.Boredom:     return new Color(0.9f, 0.9f, 0.2f);
-                case FlowState.Anxiety:     return new Color(1f, 0.6f, 0.1f);
-                case FlowState.Frustration: return new Color(0.9f, 0.2f, 0.15f);
-                default:                    return new Color(0.3f, 0.3f, 0.3f);
-            }
-        }
     }
 }

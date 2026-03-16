@@ -7,7 +7,6 @@ namespace Cadence.Editor
     public class DifficultyCurvePreview : EditorWindow
     {
         private SawtoothCurveConfig _sawtoothConfig;
-        private PlayerModelConfig _playerModelConfig;
         private Vector2 _scrollPos;
 
         // Preview parameters
@@ -45,8 +44,6 @@ namespace Cadence.Editor
             EditorGUI.BeginChangeCheck();
             _sawtoothConfig = (SawtoothCurveConfig)EditorGUILayout.ObjectField(
                 "Sawtooth Config", _sawtoothConfig, typeof(SawtoothCurveConfig), false);
-            _playerModelConfig = (PlayerModelConfig)EditorGUILayout.ObjectField(
-                "Player Model Config", _playerModelConfig, typeof(PlayerModelConfig), false);
 
             EditorGUILayout.Space();
 
@@ -118,7 +115,7 @@ namespace Cadence.Editor
             for (int i = 0; i < _levelCount; i++)
             {
                 _multipliers[i] = _points[i].Multiplier;
-                _pointColors[i] = GetLevelTypeColor(_points[i].SuggestedType);
+                _pointColors[i] = CadenceEditorStyles.GetLevelTypeColor(_points[i].SuggestedType);
 
                 // Predict pass rate based on player rating vs multiplied difficulty
                 float effectiveDifficulty = _playerRating * _points[i].Multiplier;
@@ -231,9 +228,9 @@ namespace Cadence.Editor
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Legend", EditorStyles.boldLabel);
             EditorGUILayout.BeginHorizontal();
-            DrawLegendItem("Standard", GetLevelTypeColor(LevelType.Standard));
-            DrawLegendItem("Boss", GetLevelTypeColor(LevelType.Boss));
-            DrawLegendItem("Breather", GetLevelTypeColor(LevelType.Breather));
+            DrawLegendItem("Standard", CadenceEditorStyles.GetLevelTypeColor(LevelType.Standard));
+            DrawLegendItem("Boss", CadenceEditorStyles.GetLevelTypeColor(LevelType.Boss));
+            DrawLegendItem("Breather", CadenceEditorStyles.GetLevelTypeColor(LevelType.Breather));
             EditorGUILayout.EndHorizontal();
         }
 
@@ -244,15 +241,5 @@ namespace Cadence.Editor
             EditorGUILayout.LabelField(label, GUILayout.Width(70));
         }
 
-        private static Color GetLevelTypeColor(LevelType type)
-        {
-            switch (type)
-            {
-                case LevelType.Boss:     return new Color(1f, 0.3f, 0.2f);
-                case LevelType.Breather: return new Color(0.3f, 0.8f, 1f);
-                case LevelType.Tutorial: return new Color(0.7f, 0.7f, 0.7f);
-                default:                 return new Color(0.4f, 0.9f, 0.4f);
-            }
-        }
     }
 }

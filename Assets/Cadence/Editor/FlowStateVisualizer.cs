@@ -13,6 +13,8 @@ namespace Cadence.Editor
     {
         private static bool _enabled = true;
         private static IDDAService _service;
+        private static GUIStyle _titleStyle;
+        private static GUIStyle _detailStyle;
 
         static FlowStateVisualizer()
         {
@@ -48,7 +50,7 @@ namespace Cadence.Editor
             float height = 80f;
 
             // Background
-            Color bgColor = GetFlowColor(flow.State);
+            Color bgColor = CadenceEditorStyles.GetFlowColor(flow.State);
             bgColor.a = 0.8f;
             EditorGUI.DrawRect(new Rect(x, y, width, height), bgColor);
 
@@ -58,38 +60,33 @@ namespace Cadence.Editor
             EditorGUI.DrawRect(new Rect(x, y, 2, height), Color.black);
             EditorGUI.DrawRect(new Rect(x + width - 2, y, 2, height), Color.black);
 
-            var style = new GUIStyle(EditorStyles.boldLabel)
+            if (_titleStyle == null)
             {
-                fontSize = 14,
-                alignment = TextAnchor.MiddleCenter,
-                normal = { textColor = Color.white }
-            };
+                _titleStyle = new GUIStyle(EditorStyles.boldLabel)
+                {
+                    fontSize = 14,
+                    alignment = TextAnchor.MiddleCenter,
+                    normal = { textColor = Color.white }
+                };
+            }
 
-            var smallStyle = new GUIStyle(EditorStyles.miniLabel)
+            if (_detailStyle == null)
             {
-                alignment = TextAnchor.MiddleCenter,
-                normal = { textColor = Color.white }
-            };
+                _detailStyle = new GUIStyle(EditorStyles.miniLabel)
+                {
+                    alignment = TextAnchor.MiddleCenter,
+                    normal = { textColor = Color.white }
+                };
+            }
 
-            GUI.Label(new Rect(x, y + 5, width, 25), $"Flow: {flow.State}", style);
+            GUI.Label(new Rect(x, y + 5, width, 25), $"Flow: {flow.State}", _titleStyle);
             GUI.Label(new Rect(x, y + 30, width, 18),
-                $"Tempo: {flow.TempoScore:F2}  Eff: {flow.EfficiencyScore:F2}", smallStyle);
+                $"Tempo: {flow.TempoScore:F2}  Eff: {flow.EfficiencyScore:F2}", _detailStyle);
             GUI.Label(new Rect(x, y + 48, width, 18),
-                $"Engage: {flow.EngagementScore:F2}  Conf: {flow.Confidence:F2}", smallStyle);
+                $"Engage: {flow.EngagementScore:F2}  Conf: {flow.Confidence:F2}", _detailStyle);
 
             Handles.EndGUI();
         }
 
-        private static Color GetFlowColor(FlowState state)
-        {
-            switch (state)
-            {
-                case FlowState.Boredom:     return new Color(0.2f, 0.4f, 0.8f);
-                case FlowState.Flow:        return new Color(0.1f, 0.7f, 0.2f);
-                case FlowState.Anxiety:     return new Color(0.9f, 0.7f, 0.1f);
-                case FlowState.Frustration: return new Color(0.9f, 0.2f, 0.1f);
-                default:                    return new Color(0.4f, 0.4f, 0.4f);
-            }
-        }
     }
 }

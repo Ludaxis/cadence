@@ -21,7 +21,7 @@ namespace Cadence
         /// <summary>High booster usage, low efficiency despite winning. Adjustment scale: 0.9x.</summary>
         BoosterDependent = 4,
 
-        /// <summary>Declining engagement, declining efficiency, low recent win rate. Adjustment scale: 0.5x. Upward blocked.</summary>
+        /// <summary>Declining engagement, declining efficiency, low recent win rate. Adjustment scale: 1.4x. Upward blocked.</summary>
         ChurnRisk = 5
     }
 }

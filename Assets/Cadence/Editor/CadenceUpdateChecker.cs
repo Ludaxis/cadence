@@ -611,7 +611,6 @@ namespace Cadence.Editor
             public string body;
             public bool prerelease;
             public string html_url;
-            public string published_at;
         }
 
         [Serializable]

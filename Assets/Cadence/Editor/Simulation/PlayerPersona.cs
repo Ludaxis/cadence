@@ -14,7 +14,6 @@ namespace Cadence.Editor
         public float MeanMoveCount;
         public float MoveCountVariance;
         public float OptimalMoveRatio;
-        public float MeanSessionTime;
         public float MeanInterMoveTime;
         public float BoosterUseRate;
         public float PauseRate;
@@ -37,7 +36,6 @@ namespace Cadence.Editor
             MeanMoveCount = 20f,
             MoveCountVariance = 5f,
             OptimalMoveRatio = 0.35f,
-            MeanSessionTime = 90f,
             MeanInterMoveTime = 3.0f,
             BoosterUseRate = 0.1f,
             PauseRate = 0.15f,
@@ -52,7 +50,6 @@ namespace Cadence.Editor
             MeanMoveCount = 18f,
             MoveCountVariance = 4f,
             OptimalMoveRatio = 0.50f,
-            MeanSessionTime = 60f,
             MeanInterMoveTime = 2.0f,
             BoosterUseRate = 0.15f,
             PauseRate = 0.10f,
@@ -67,7 +64,6 @@ namespace Cadence.Editor
             MeanMoveCount = 12f,
             MoveCountVariance = 2f,
             OptimalMoveRatio = 0.80f,
-            MeanSessionTime = 40f,
             MeanInterMoveTime = 1.2f,
             BoosterUseRate = 0.02f,
             PauseRate = 0.02f,
@@ -82,7 +78,6 @@ namespace Cadence.Editor
             MeanMoveCount = 10f,
             MoveCountVariance = 2f,
             OptimalMoveRatio = 0.60f,
-            MeanSessionTime = 25f,
             MeanInterMoveTime = 0.8f,
             BoosterUseRate = 0.0f,
             PauseRate = 0.0f,
@@ -97,7 +92,6 @@ namespace Cadence.Editor
             MeanMoveCount = 25f,
             MoveCountVariance = 8f,
             OptimalMoveRatio = 0.20f,
-            MeanSessionTime = 120f,
             MeanInterMoveTime = 4.0f,
             BoosterUseRate = 0.30f,
             PauseRate = 0.25f,
@@ -112,7 +106,6 @@ namespace Cadence.Editor
             MeanMoveCount = 8f,
             MoveCountVariance = 3f,
             OptimalMoveRatio = 0.15f,
-            MeanSessionTime = 30f,
             MeanInterMoveTime = 5.0f,
             BoosterUseRate = 0.05f,
             PauseRate = 0.30f,

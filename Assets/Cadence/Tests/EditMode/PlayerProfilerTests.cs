@@ -197,10 +197,10 @@ namespace Cadence.Tests
             {
                 profile.RecentHistory.Add(new SessionHistoryEntry
                 {
-                    Efficiency = efficiency + Random.Range(-0.05f, 0.05f),
+                    Efficiency = efficiency + (i % 3 - 1) * 0.03f,
                     Outcome = i < wins ? 1f : 0f,
-                    Duration = avgDuration + Random.Range(-5f, 5f),
-                    Moves = avgMoves + Random.Range(-3, 3)
+                    Duration = avgDuration + (i % 5 - 2) * 2f,
+                    Moves = avgMoves + (i % 3 - 1)
                 });
             }
 

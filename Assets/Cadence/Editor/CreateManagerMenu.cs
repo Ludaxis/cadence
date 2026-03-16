@@ -10,7 +10,11 @@ namespace Cadence.Editor
         private static void CreateManager()
         {
             // Check for existing instance in the scene
+#if UNITY_2023_1_OR_NEWER
+            var existing = Object.FindAnyObjectByType<CadenceManager>();
+#else
             var existing = Object.FindObjectOfType<CadenceManager>();
+#endif
             if (existing != null)
             {
                 Selection.activeGameObject = existing.gameObject;

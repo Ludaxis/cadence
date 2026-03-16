@@ -43,6 +43,12 @@ namespace Cadence
         public System.Collections.Generic.List<string> SecondaryParameterKeys;
 
 #if ODIN_INSPECTOR
+        [PropertyTooltip("Per-parameter direction and bounds metadata.\n" +
+                          "Use this to tell Cadence whether a larger numeric value makes the level harder or easier.")]
+#endif
+        public System.Collections.Generic.List<ParameterSemantics> ParameterSemanticsEntries;
+
+#if ODIN_INSPECTOR
         [PropertyTooltip("Multiplier for all adjustment deltas on this level type.\n\n" +
                           "1.0 = Standard (full adjustment)\n" +
                           "0.8 = GoalCollection (slightly conservative)\n" +
@@ -66,7 +72,7 @@ namespace Cadence
 #if ODIN_INSPECTOR
         [PropertyTooltip("Master switch for DDA on this level type.\n\n" +
                           "false for Tutorial = DDA is completely disabled.\n" +
-                          "When disabled, GetProposal returns null and no rules are evaluated.")]
+                          "When disabled, GetProposal returns an empty proposal and no rules are evaluated.")]
         [ToggleLeft]
         [GUIColor("@DDAEnabled ? Color.white : new Color(1f, 0.7f, 0.7f)")]
 #endif
@@ -76,6 +82,8 @@ namespace Cadence
         {
             Type = LevelType.Standard;
             PrimaryParameterKey = null;
+            SecondaryParameterKeys = new System.Collections.Generic.List<string>();
+            ParameterSemanticsEntries = new System.Collections.Generic.List<ParameterSemantics>();
             AdjustmentScale = 1f;
             AllowUpwardAdjustment = true;
             DDAEnabled = true;
@@ -86,9 +94,61 @@ namespace Cadence
         {
             Type = type;
             PrimaryParameterKey = primaryKey;
+            SecondaryParameterKeys = new System.Collections.Generic.List<string>();
+            ParameterSemanticsEntries = new System.Collections.Generic.List<ParameterSemantics>();
             AdjustmentScale = scale;
             AllowUpwardAdjustment = allowUpward;
             DDAEnabled = enabled;
         }
+
+        public bool TryGetParameterSemantics(string parameterKey, out ParameterSemantics semantics)
+        {
+            if (ParameterSemanticsEntries != null)
+            {
+                for (int i = 0; i < ParameterSemanticsEntries.Count; i++)
+                {
+                    var candidate = ParameterSemanticsEntries[i];
+                    if (candidate != null && candidate.ParameterKey == parameterKey)
+                    {
+                        semantics = candidate;
+                        return true;
+                    }
+                }
+            }
+
+            semantics = null;
+            return false;
+        }
+
+        public bool IsParameterAdjustable(string parameterKey)
+        {
+            return !TryGetParameterSemantics(parameterKey, out var semantics) || semantics.Adjustable;
+        }
+
+        public float GetNumericDirection(string parameterKey)
+        {
+            return TryGetParameterSemantics(parameterKey, out var semantics)
+                ? semantics.DifficultyToNumericDirection
+                : 1f;
+        }
+
+        public float ClampProposedValue(string parameterKey, float proposedValue)
+        {
+            return TryGetParameterSemantics(parameterKey, out var semantics)
+                ? semantics.Clamp(proposedValue)
+                : proposedValue;
+        }
+    }
+
+    /// <summary>
+    /// Resolves <see cref="LevelTypeConfig"/> instances for proposal generation and session setup.
+    /// Register on <see cref="IDDAService"/> to override built-in defaults for a specific project.
+    /// </summary>
+    public interface ILevelTypeConfigProvider
+    {
+        /// <summary>
+        /// Attempts to provide a config override for the requested level type.
+        /// </summary>
+        bool TryGetLevelTypeConfig(LevelType type, out LevelTypeConfig config);
     }
 }

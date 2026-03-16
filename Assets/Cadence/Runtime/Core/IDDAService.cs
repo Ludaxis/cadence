@@ -68,21 +68,16 @@ namespace Cadence
         FlowReading CurrentFlow { get; }
 
         /// <summary>
-        /// Generates a difficulty adjustment proposal for the next level based on player history and session analysis.
-        /// Returns <c>null</c> if no adjustment is needed or DDA is disabled for the level type.
-        /// </summary>
-        /// <param name="nextLevelParameters">Baseline parameters for the upcoming level.</param>
-        /// <returns>A proposal with parameter deltas, or <c>null</c> if no adjustment is warranted.</returns>
-        AdjustmentProposal GetProposal(Dictionary<string, float> nextLevelParameters);
-
-        /// <summary>
         /// Generates a difficulty adjustment proposal with explicit level type and optional level index for scheduling.
-        /// Returns <c>null</c> if no adjustment is needed or DDA is disabled for the level type.
+        /// The next level type must always be explicit.
         /// </summary>
         /// <param name="nextLevelParameters">Baseline parameters for the upcoming level.</param>
         /// <param name="nextLevelType">Level type that determines which rules and scaling apply.</param>
         /// <param name="nextLevelIndex">Global level index for sawtooth scheduling, or -1 to skip scheduling.</param>
-        /// <returns>A proposal with parameter deltas, or <c>null</c> if no adjustment is warranted.</returns>
+        /// <returns>
+        /// A proposal object. Returns <c>null</c> only when between-session adjustment is disabled globally.
+        /// Tutorial or otherwise DDA-disabled level types return an empty proposal instead.
+        /// </returns>
         AdjustmentProposal GetProposal(Dictionary<string, float> nextLevelParameters,
             LevelType nextLevelType, int nextLevelIndex = -1);
 
@@ -114,6 +109,24 @@ namespace Cadence
         /// <param name="levelIndex">Zero-based global level index.</param>
         /// <returns>Multiplier where 1.0 = baseline, &gt;1.0 = harder, &lt;1.0 = easier.</returns>
         float GetTargetMultiplier(int levelIndex);
+
+        /// <summary>
+        /// Registers an additional adjustment rule to be evaluated after the built-in rules.
+        /// Call during setup before proposal generation begins.
+        /// </summary>
+        void RegisterRule(IAdjustmentRule rule);
+
+        /// <summary>
+        /// Registers a provider that supplies one or more adjustment rules.
+        /// Call during setup before proposal generation begins.
+        /// </summary>
+        void RegisterRuleProvider(IAdjustmentRuleProvider provider);
+
+        /// <summary>
+        /// Registers a provider that can override built-in <see cref="LevelTypeConfig"/> defaults.
+        /// Later registrations take precedence when multiple providers handle the same type.
+        /// </summary>
+        void RegisterLevelTypeConfigProvider(ILevelTypeConfigProvider provider);
 
         /// <summary>
         /// Returns a complete snapshot of the DDA system state for debug visualization.

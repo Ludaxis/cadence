@@ -20,10 +20,10 @@ namespace Cadence.Editor
         private int _levelIndex = 0;
 
         // Level parameters
-        private List<ParamEntry> _levelParams = new List<ParamEntry>
+        private List<CadenceEditorStyles.ParamEntry> _levelParams = new List<CadenceEditorStyles.ParamEntry>
         {
-            new ParamEntry { Key = "difficulty", Value = 100f },
-            new ParamEntry { Key = "move_limit", Value = 30f }
+            new CadenceEditorStyles.ParamEntry { Key = "difficulty", Value = 100f },
+            new CadenceEditorStyles.ParamEntry { Key = "move_limit", Value = 30f }
         };
 
         // Signal injection
@@ -31,6 +31,8 @@ namespace Cadence.Editor
         private float _optimalPercent = 0.5f;
         private float _interMoveInterval = 1.5f;
         private int _pauseCount = 0;
+        private float _inputAccuracy = 0.75f;
+        private float _resourceEfficiency = 0.70f;
 
         // Batch simulation
         private int _simulateCount = 5;
@@ -215,7 +217,7 @@ namespace Cadence.Editor
             for (int i = 0; i < _levelParams.Count; i++)
             {
                 EditorGUILayout.BeginHorizontal();
-                var updated = new ParamEntry
+                var updated = new CadenceEditorStyles.ParamEntry
                 {
                     Key = EditorGUILayout.TextField(_levelParams[i].Key, GUILayout.Width(90)),
                     Value = EditorGUILayout.FloatField(_levelParams[i].Value)
@@ -237,7 +239,7 @@ namespace Cadence.Editor
             }
             if (GUILayout.Button("+ Add Parameter"))
             {
-                _levelParams.Add(new ParamEntry { Key = "param", Value = 1f });
+                _levelParams.Add(new CadenceEditorStyles.ParamEntry { Key = "param", Value = 1f });
                 paramsChanged = true;
             }
 
@@ -306,6 +308,15 @@ namespace Cadence.Editor
                 BeginSessionOnAllServices();
             }
             GUI.enabled = _service.IsSessionActive;
+            if (GUILayout.Button("Mark Abandoned", GUILayout.Height(24)))
+            {
+                MarkAbandonedOnAllServices();
+            }
+            GUI.enabled = true;
+            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.BeginHorizontal();
+            GUI.enabled = _service.IsSessionActive;
             var bg = GUI.backgroundColor;
             GUI.backgroundColor = new Color(0.5f, 1f, 0.5f);
             if (GUILayout.Button("End Win", GUILayout.Height(24)))
@@ -313,6 +324,9 @@ namespace Cadence.Editor
             GUI.backgroundColor = new Color(1f, 0.6f, 0.5f);
             if (GUILayout.Button("End Lose", GUILayout.Height(24)))
                 EndAndPropose(SessionOutcome.Lose);
+            GUI.backgroundColor = new Color(0.95f, 0.8f, 0.35f);
+            if (GUILayout.Button("End Abandoned", GUILayout.Height(24)))
+                EndAndPropose(SessionOutcome.Abandoned);
             GUI.backgroundColor = bg;
             GUI.enabled = true;
             EditorGUILayout.EndHorizontal();
@@ -331,6 +345,8 @@ namespace Cadence.Editor
             _optimalPercent = EditorGUILayout.Slider("Optimal %", _optimalPercent, 0f, 1f);
             _interMoveInterval = EditorGUILayout.Slider("Move Interval (sec)", _interMoveInterval, 0.2f, 10f);
             _pauseCount = EditorGUILayout.IntSlider("Pauses", _pauseCount, 0, 10);
+            _inputAccuracy = EditorGUILayout.Slider("Input Accuracy", _inputAccuracy, 0f, 1f);
+            _resourceEfficiency = EditorGUILayout.Slider("Resource Efficiency", _resourceEfficiency, 0f, 1f);
             if (GUILayout.Button("Inject Moves"))
             {
                 InjectMoves(_service, _moveCount, _optimalPercent);
@@ -382,11 +398,14 @@ namespace Cadence.Editor
                 ("Optimal", SignalKeys.MoveOptimal, 1f, SignalTier.DecisionQuality),
                 ("Waste", SignalKeys.MoveWaste, 1f, SignalTier.DecisionQuality),
                 ("Progress", SignalKeys.ProgressDelta, 0.1f, SignalTier.DecisionQuality),
-                ("Interval", SignalKeys.InterMoveInterval, 1.5f, SignalTier.BehavioralTempo),
+                ("Interval", SignalKeys.InterMoveInterval, _interMoveInterval, SignalTier.BehavioralTempo),
                 ("Hesitation", SignalKeys.HesitationTime, 3f, SignalTier.BehavioralTempo),
                 ("Pause", SignalKeys.PauseTriggered, 1f, SignalTier.BehavioralTempo),
                 ("PowerUp", SignalKeys.PowerUpUsed, 1f, SignalTier.StrategicPattern),
                 ("Sequence", SignalKeys.SequenceMatch, 1f, SignalTier.StrategicPattern),
+                ("Accuracy", SignalKeys.InputAccuracy, _inputAccuracy, SignalTier.RawInput),
+                ("Resource", SignalKeys.ResourceEfficiency, _resourceEfficiency, SignalTier.DecisionQuality),
+                ("Abandon", SignalKeys.LevelAbandoned, 1f, SignalTier.RetryMeta),
             };
 
             int cols = 3;
@@ -438,8 +457,9 @@ namespace Cadence.Editor
 
             // ── Flow State ──
             DrawSectionHeader("Flow State");
+            var debug = _service.GetDebugSnapshot();
             var flow = _service.CurrentFlow;
-            var flowColor = GetFlowColor(flow.State);
+            var flowColor = CadenceEditorStyles.GetFlowColor(flow.State);
             EditorGUI.indentLevel++;
             var prev = GUI.color;
             GUI.color = flowColor;
@@ -449,6 +469,9 @@ namespace Cadence.Editor
             DrawProgressBar("Efficiency", flow.EfficiencyScore);
             DrawProgressBar("Engagement", flow.EngagementScore);
             DrawProgressBar("Confidence", flow.Confidence);
+            EditorGUILayout.LabelField("Levels This Session", debug.LevelsThisSession.ToString());
+            EditorGUILayout.LabelField("Fatigue State", debug.SessionFatigueActive ? "Active" : "Inactive");
+            EditorGUILayout.LabelField("Abandon Pending", debug.ExplicitAbandonPending ? "Yes" : "No");
             EditorGUI.indentLevel--;
 
             // ── Player Archetype ──
@@ -492,6 +515,11 @@ namespace Cadence.Editor
                     EditorGUILayout.LabelField("Moves / Duration",
                         $"{_lastSessionSummary.TotalMoves} moves, {_lastSessionSummary.Duration:F1}s");
                     DrawProgressBar("Move Efficiency", _lastSessionSummary.MoveEfficiency);
+                    if (_lastSessionSummary.HasInputAccuracy)
+                        DrawProgressBar("Input Accuracy", _lastSessionSummary.InputAccuracy01);
+                    if (_lastSessionSummary.HasResourceEfficiency)
+                        DrawProgressBar("Resource Efficiency", _lastSessionSummary.ResourceEfficiency01);
+                    DrawProgressBar("Effective Efficiency", _lastSessionSummary.EffectiveEfficiency01);
                     DrawProgressBar("Waste Ratio", _lastSessionSummary.WasteRatio);
                     DrawProgressBar("Progress Rate", _lastSessionSummary.ProgressRate);
                     EditorGUILayout.LabelField("Mean Interval",
@@ -618,7 +646,7 @@ namespace Cadence.Editor
             _service = new DDAService(_ddaConfig);
             _proposalHistory.Clear();
             _hasSessionSummary = false;
-            _activeParams = BuildParamDict();
+            _activeParams = CadenceEditorStyles.BuildParamDict(_levelParams.ToArray());
 
             // Apply custom player profile
             InjectPlayerProfile(_service, _initialRating, _initialDeviation,
@@ -683,7 +711,7 @@ namespace Cadence.Editor
         {
             if (_service == null) return;
             if (_activeParams == null || _activeParams.Count == 0)
-                _activeParams = BuildParamDict();
+                _activeParams = CadenceEditorStyles.BuildParamDict(_levelParams.ToArray());
 
             EnsureCompareServiceReady();
 
@@ -714,7 +742,7 @@ namespace Cadence.Editor
             _hasSessionSummary = true;
 
             if (_activeParams == null || _activeParams.Count == 0)
-                _activeParams = BuildParamDict();
+                _activeParams = CadenceEditorStyles.BuildParamDict(_levelParams.ToArray());
 
             var proposal = _service.GetProposal(
                 new Dictionary<string, float>(_activeParams), _levelType, _levelIndex);
@@ -734,6 +762,17 @@ namespace Cadence.Editor
             }
 
             _levelIndex++;
+            Repaint();
+        }
+
+        private void MarkAbandonedOnAllServices()
+        {
+            if (_service == null || !_service.IsSessionActive) return;
+
+            _service.RecordSignal(SignalKeys.LevelAbandoned, 1f, SignalTier.RetryMeta);
+            if (_compareMode && _compareService != null && _compareService.IsSessionActive)
+                _compareService.RecordSignal(SignalKeys.LevelAbandoned, 1f, SignalTier.RetryMeta);
+
             Repaint();
         }
 
@@ -762,6 +801,10 @@ namespace Cadence.Editor
 
                 service.RecordSignal(SignalKeys.InterMoveInterval, _interMoveInterval,
                     SignalTier.BehavioralTempo, i + 1);
+                service.RecordSignal(SignalKeys.InputAccuracy, _inputAccuracy,
+                    SignalTier.RawInput, i + 1);
+                service.RecordSignal(SignalKeys.ResourceEfficiency, _resourceEfficiency,
+                    SignalTier.DecisionQuality, i + 1);
                 service.Tick(_interMoveInterval);
             }
 
@@ -787,7 +830,7 @@ namespace Cadence.Editor
 
             var stateA = _activeParams != null && _activeParams.Count > 0
                 ? new Dictionary<string, float>(_activeParams)
-                : BuildParamDict();
+                : CadenceEditorStyles.BuildParamDict(_levelParams.ToArray());
 
             Dictionary<string, float> stateB = null;
             if (_compareMode && _compareService != null)
@@ -834,12 +877,12 @@ namespace Cadence.Editor
                     RecordProposal(cProposal, outcome, _compareHistory);
 
                     if (_autoApplyProposals && cProposal != null && cProposal.Deltas != null)
-                        ApplyProposalToDictionary(cProposal, stateB);
+                        CadenceEditorStyles.ApplyProposal(cProposal, stateB);
                 }
 
                 // Auto-apply proposals to feed back into next session
                 if (_autoApplyProposals && proposal != null && proposal.Deltas != null)
-                    ApplyProposalToDictionary(proposal, stateA);
+                    CadenceEditorStyles.ApplyProposal(proposal, stateA);
 
                 _levelIndex++;
             }
@@ -857,7 +900,7 @@ namespace Cadence.Editor
             if (_proposalHistory.Count == 0) return;
             var last = _proposalHistory[_proposalHistory.Count - 1];
             if (_activeParams == null || _activeParams.Count == 0)
-                _activeParams = BuildParamDict();
+                _activeParams = CadenceEditorStyles.BuildParamDict(_levelParams.ToArray());
 
             foreach (var d in last.Deltas)
                 _activeParams[d.Key] = d.To;
@@ -867,7 +910,7 @@ namespace Cadence.Editor
 
         private void ApplyParamEditsToActiveState()
         {
-            var editedParams = BuildParamDict();
+            var editedParams = CadenceEditorStyles.BuildParamDict(_levelParams.ToArray());
             _activeParams = new Dictionary<string, float>(editedParams);
 
             // Manual UI edits should become the shared baseline for compare mode.
@@ -897,31 +940,10 @@ namespace Cadence.Editor
             if (_compareActiveParams == null || _compareActiveParams.Count == 0)
             {
                 if (_activeParams == null || _activeParams.Count == 0)
-                    _activeParams = BuildParamDict();
+                    _activeParams = CadenceEditorStyles.BuildParamDict(_levelParams.ToArray());
 
                 _compareActiveParams = new Dictionary<string, float>(_activeParams);
             }
-        }
-
-        private static void ApplyProposalToDictionary(AdjustmentProposal proposal,
-            Dictionary<string, float> targetParams)
-        {
-            if (proposal?.Deltas == null || targetParams == null) return;
-            foreach (var d in proposal.Deltas)
-            {
-                targetParams[d.ParameterKey] = d.ProposedValue;
-            }
-        }
-
-        private Dictionary<string, float> BuildParamDict()
-        {
-            var dict = new Dictionary<string, float>();
-            for (int i = 0; i < _levelParams.Count; i++)
-            {
-                if (!string.IsNullOrEmpty(_levelParams[i].Key))
-                    dict[_levelParams[i].Key] = _levelParams[i].Value;
-            }
-            return dict;
         }
 
         private void SyncParamEntriesFromDictionary(Dictionary<string, float> source)
@@ -932,7 +954,7 @@ namespace Cadence.Editor
             {
                 if (source.TryGetValue(_levelParams[i].Key, out float value))
                 {
-                    _levelParams[i] = new ParamEntry
+                    _levelParams[i] = new CadenceEditorStyles.ParamEntry
                     {
                         Key = _levelParams[i].Key,
                         Value = value
@@ -954,7 +976,7 @@ namespace Cadence.Editor
 
                 if (!found)
                 {
-                    _levelParams.Add(new ParamEntry
+                    _levelParams.Add(new CadenceEditorStyles.ParamEntry
                     {
                         Key = kvp.Key,
                         Value = kvp.Value
@@ -1026,27 +1048,9 @@ namespace Cadence.Editor
             return sum;
         }
 
-        private static Color GetFlowColor(FlowState state)
-        {
-            switch (state)
-            {
-                case FlowState.Boredom:     return new Color(0.3f, 0.6f, 1f);
-                case FlowState.Flow:        return new Color(0.2f, 0.9f, 0.3f);
-                case FlowState.Anxiety:     return new Color(1f, 0.8f, 0.2f);
-                case FlowState.Frustration: return new Color(1f, 0.3f, 0.2f);
-                default:                    return Color.gray;
-            }
-        }
-
         // ════════════════════════════════════════════════════════════
         //  DATA TYPES
         // ════════════════════════════════════════════════════════════
-
-        private struct ParamEntry
-        {
-            public string Key;
-            public float Value;
-        }
 
         private class ProposalRecord
         {

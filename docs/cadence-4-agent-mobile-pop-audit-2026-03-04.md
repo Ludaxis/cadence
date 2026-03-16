@@ -1,418 +1,425 @@
-# Cadence DDA SDK -- Mobile Pop Puzzle Game Readiness Audit
+# Cadence Casual-Tile DDA Audit
 
-**Date**: 2026-03-04
-**Methodology**: 4-Agent Deep Evaluation (Coordinator + Unity Engineer + QA Engineer + Puzzle Game Designer)
-**Project**: Cadence -- Dynamic Difficulty Adjustment SDK for Unity Mobile Puzzle Games
-**Unity Version**: 2022.3.62f3 LTS
-**Codebase**: 84 C# scripts (50 Runtime, 14 Editor, 14+1 Tests, 3 Samples), 88+ test methods (6 new test suites added)
-**Files Inspected**: Every C# source file, all assembly definitions, package manifest, project settings
+**Updated**: 2026-03-13
+**Benchmark**: Internal DDA system for casual tile / mobile puzzle games
+**Method**: 8 structured workstreams plus coordinator synthesis
+**Repo reviewed**: runtime, editor, tests, samples, docs, package metadata, and current audit artifacts
+**Code footprint reviewed**: 13,819 lines across runtime, editor, tests, and samples
 
----
+## Coordinator Verdict
 
-## Executive Summary
+Cadence is **not** a world-class casual-tile DDA system today.
 
-| Dimension | Score | Verdict |
+It is now substantially closer to first-project readiness than it was at the start of this audit cycle. The runtime now has:
+- scalar parameter polarity for built-in puzzle defaults
+- public custom-rule registration
+- real support for `tempo.interval`, `input.accuracy`, `resource.efficiency`, and explicit abandonment
+- default-on session fatigue for long contiguous play sessions
+- executable EditMode and PlayMode coverage for the new contract
+
+The remaining gaps are now narrower and more specific:
+- the public integration surface is improved, but still not SDK-grade
+- the puzzle fit is still scalar-parameter-first, not board- or blocker-aware
+- proposal generation is now explicit-only, and provider hooks now exist, but external packaging is still not mature
+- editor monoliths still need refactoring before broad publication
+
+### Direct Answers
+
+| Question | Answer |
+|---|---|
+| Is this world class for puzzle games? | No. |
+| Can I publish it today as broadly claimed? | No. Not as a broad "any mobile puzzle game" SDK. |
+| Can I use it internally? | Yes. It is now viable for a first internal scalar-puzzle project with clear scope discipline. |
+| Is it modular and easy to integrate for developers? | Moderately. Good for in-house engineers, better than before, still not strong enough for external SDK consumers. |
+| Can it serve every mobile puzzle subtype? | No. It is much stronger for scalar-difficulty puzzle loops than for blocker-heavy, board-authored, or topology-driven puzzle games. |
+
+## Final Score
+
+This score reflects the system itself against the agreed benchmark. Documentation was reconciled in this pass, but the runtime verdict does not change.
+
+| Dimension | Weight | Score | Notes |
+|---|---:|---:|---|
+| Runtime correctness and safety | 35% | 8.1 / 10 | Efficient core, with scalar semantics, explicit signal support, abandonment coercion, and default fatigue now in place. |
+| Casual tile / pop puzzle fit | 25% | 6.9 / 10 | Stronger for scalar puzzle production, still weak on board/blocker semantics and authored-content understanding. |
+| Integration and developer ergonomics | 20% | 7.9 / 10 | Good manager/tooling path, explicit-only proposal contract, and public provider hooks for rules and level semantics; still not plugin-grade. |
+| Documentation truthfulness | 10% | 8.6 / 10 | Runtime, docs, samples, and audit are now materially closer to one truthful contract. |
+| Tests and maintainability | 10% | 8.4 / 10 | EditMode and PlayMode suites now cover the new signal contract and fatigue behavior, though maintainability hotspots remain. |
+| **Weighted total** | 100% | **7.9 / 10** | **Strong internal first-project foundation, still not world-class and not ready to market broadly.** |
+
+Verdict bands:
+- `9.0+`: world-class internal casual-tile DDA
+- `8.0-8.9`: strong and publishable with minor caveats
+- `6.0-7.9`: promising but not world-class / not ready to market broadly
+- `<6.0`: not ready to publish as claimed
+
+Cadence now lands in the `6.0-7.9` band, near the top of it.
+
+## Research Baseline
+
+The evaluation criteria were anchored to a small, high-signal reference set:
+
+- [Robin Hunicke, "The Case for Dynamic Difficulty Adjustment in Games"](https://www.researchgate.net/profile/Robin_Hunicke/publication/220982524_The_case_for_dynamic_difficulty_adjustment_in_games/links/53fb98490cf2dca8fffe800a.pdf)
+  Baseline principle: DDA should keep the player inside a target challenge band without feeling arbitrary or obviously fake.
+
+- [Mark Glickman, "Example of the Glicko-2 system"](https://glicko.net/glicko/glicko2.pdf)
+  Baseline principle: rating + deviation + volatility is a valid confidence-aware player model, but only when the modeled match and difficulty semantics are coherent.
+
+- [King / GDC Vault, "Blockers: Analyzing Difficulty Drivers in Candy Crush Games"](https://www.gdcvault.com/play/1026879/Blockers-Analyzing-Difficulty-Drivers-in)
+  Puzzle-specific baseline: casual tile difficulty is not just a scalar number. Moves, blockers, board complexity, and authored level content all matter.
+
+- [PMC, "Inferring and Comparing Game Difficulty Curves using Player-vs-Level Match Data"](https://pmc.ncbi.nlm.nih.gov/articles/PMC8336693/)
+  Baseline principle: player-vs-level rating ideas are useful, but they still need level-side semantics and difficulty-curve awareness.
+
+- [ScienceDirect, "Personalized game design for improved user retention and monetization in freemium games"](https://www.sciencedirect.com/science/article/pii/S0167811625000060)
+  Product baseline: in freemium games, difficulty tuning interacts with retention and monetization. A production DDA stack needs clear guardrails around assists, boosts, and live-ops goals.
+
+### What Puzzle DDA Leaders Actually Do
+
+From those references, a puzzle-appropriate DDA system typically needs:
+- a target challenge band, not just raw win/loss reaction
+- parameter semantics that understand whether a larger value makes the level harder or easier
+- content-aware levers such as blockers, board state, goal density, or move budget
+- onboarding protection for the first sessions
+- clean separation between player model, current frustration state, and monetization/live-ops constraints
+
+Cadence covers only part of that list today.
+
+## How Cadence Works Today
+
+### Runtime Pipeline
+
+1. `DDAService.BeginSession(...)` starts an attempt, resets the collector and flow detector, applies session-gap decay, and records `session.started`.
+2. `RecordSignal(...)` appends raw signals to the session batch and recent ring buffer.
+3. `Tick(deltaTime)` feeds the flow detector from new ring-buffer entries only.
+4. `EndSession(outcome)` records outcome signals, builds a `SessionSummary`, and updates the Glicko-2 profile.
+5. `GetProposal(...)` classifies the player's archetype, builds `AdjustmentContext`, runs rules, merges duplicate deltas by largest absolute change, applies sawtooth scaling, clamps results, and returns `AdjustmentProposal`.
+6. The host game decides whether and how to apply each proposed value.
+
+### Actual Inputs
+
+| Category | Inputs actually required or consumed |
+|---|---|
+| Session boundaries | `BeginSession(...)`, `EndSession(...)` |
+| Required gameplay contract | `move.executed`, `move.optimal` with `1/0` every move |
+| Optional but currently consumed | `move.waste`, `progress.delta`, `tempo.hesitation`, `tempo.pause`, `strategy.powerup`, `strategy.sequence_match`, `meta.attempt`, `meta.session_gap`, `input.rejected` |
+| Runtime clock | `Tick(deltaTime)` each frame unless `CadenceManager` is used |
+| Proposal context | `nextLevelParameters`, plus preferably explicit `nextLevelType` and `nextLevelIndex` |
+
+### Actual Outputs
+
+| Output | Produced by | Notes |
 |---|---|---|
-| Architecture & Mobile Optimization | **7.0 / 10** | Solid foundation, 2 production-blocking bugs |
-| QA & Testing Readiness | **6.5 / 10** | Good core coverage, critical gaps in persistence & flow detection |
-| Game Design & Pop Market Fit | **5.5 / 10** | Strong math engine, weak monetization & onboarding |
-| **COMPOSITE SCORE** | **6.3 / 10** | **Not ship-ready. 4-6 weeks of targeted work to reach 8+/10.** |
-
-### One-Line Verdict
-
-Cadence has world-class algorithmic foundations (Glicko-2, flow detection, sawtooth scheduling) but ships with a **broken cooldown system**, **blind flow detector after buffer fill**, **zero monetization hooks**, and a **5-session cold start that ignores 60% of churning new players**. Fix these 4 issues and the score jumps to 8+/10.
-
----
-
-## Project Architecture Map
-
-```
-Assets/Cadence/
-  Runtime/ (48 files, Cadence.asmdef)
-    Core/          DDAService, CadenceManager (singleton), DDAConfig, ProfilePersistence
-    Adjustment/    AdjustmentEngine + 4 Rules (FlowChannel, StreakDamper, FrustrationRelief, Cooldown)
-    PlayerModel/   Glicko-2 rating system (double-precision, Illinois root-finding)
-    FlowDetection/ Real-time flow state classifier (Boredom/Flow/Anxiety/Frustration)
-    Signals/       SignalCollector, RingBuffer (zero-alloc), FileStorage, Replay, Serializer
-    Scheduling/    Sawtooth difficulty curve (ramp -> boss -> breather)
-    Analysis/      SessionAnalyzer, RunningAverage (Welford's algorithm)
-    Profiling/     PlayerProfiler (5 archetypes), ArchetypeAdjustmentStrategy
-    Data/          26 files: enums, structs, signal keys, level types (7), flow states
-    Debug/         DDADebugData snapshot
-
-  Editor/ (14 files, Cadence.Editor.asmdef)
-    SandboxDashboard       Manual DDA testing (3-panel layout, ~1000 lines)
-    ScenarioSimulator      6-persona simulation with 6 graph types + CSV export (~1020 lines)
-    DDADebugWindow         Play-mode debug overlay
-    DifficultyCurvePreview Sawtooth visualization with predicted pass rate
-    FlowStateVisualizer    Scene-view overlay badge
-    SetupWizard            Auto-creates and wires config ScriptableObjects
-    + 8 more editor tools
-
-  Tests/ (9 files, 88 test methods)
-    EditMode/  8 test suites, 81 methods (nunit)
-    PlayMode/  1 integration suite, 7 methods
-```
-
----
-
-## CRITICAL FINDINGS (Must Fix Before Ship)
-
-### BUG-001: Cooldown System is Completely Non-Functional
-- **Severity**: CRITICAL
-- **Found by**: Unity Engineer
-- **Location**: `AdjustmentEngine.cs:20-21` + `CooldownRule.cs:11-13`
-- **Problem**: `CooldownRule` maintains its own `_lastAdjustedTime` dictionary, but `CooldownRule.RecordAdjustment()` is **never called from anywhere in the codebase**. The `AdjustmentEngine` writes to its own parallel dictionaries. Result: the CooldownRule always sees `float.NegativeInfinity` timestamps, so **cooldowns never block anything**. Every session end triggers full difficulty adjustments with zero throttling.
-- **Player Impact**: Rapid-fire difficulty swings between sessions. Erratic difficulty undermines player trust and can cause churn.
-- **Fix**: Wire `CooldownRule.RecordAdjustment()` into `AdjustmentEngine.RecordAdjustment()`. Remove duplicate state from engine. Add test verifying second `GetProposal()` within cooldown window returns empty deltas.
-- **Effort**: 1 hour
-
-### BUG-002: FlowDetector Goes Blind After Ring Buffer Fills
-- **Severity**: CRITICAL
-- **Found by**: QA Engineer
-- **Location**: `FlowDetector.cs:75-80`
-- **Problem**: `_lastProcessedSignalCount` tracks against `SignalRingBuffer.Count`, which caps at `Capacity` (default 512). After the buffer fills, `newSignals = Count - _lastProcessedSignalCount = 0` always, so the FlowDetector **stops processing all new signals**. For a puzzle game with ~3 signals/move, this breaks after ~170 moves.
-- **Player Impact**: Frustration relief, flow detection, and real-time DDA all freeze mid-session. Long sessions get zero adaptive behavior.
-- **Fix**: Add `TotalPushed` counter to `SignalRingBuffer` that increments on every `Push()` and never wraps. Track against that instead of `Count`.
-- **Effort**: 1 hour
-
-### BUG-003: Corrupted Profile JSON Crashes Game Startup
-- **Severity**: HIGH
-- **Found by**: QA Engineer
-- **Location**: `GlickoPlayerModel.cs:122`, `CadenceManager.cs:139`
-- **Problem**: `JsonUtility.FromJsonOverwrite` throws `ArgumentException` on malformed JSON. No try/catch anywhere in the deserialization chain. If the app is killed during `PlayerPrefs.Save()` (common on mobile), the truncated JSON crashes initialization on next launch.
-- **Player Impact**: Game fails to initialize DDA. All player history lost. Potential crash loop on every app launch.
-- **Fix**: Wrap deserialization in try/catch. On failure, log warning and initialize fresh profile.
-- **Effort**: 30 minutes
-
-### BUG-004: Synchronous I/O Blocks Main Thread (8-65ms spikes)
-- **Severity**: HIGH
-- **Found by**: Unity Engineer
-- **Location**: `FileSignalStorage.cs:36` (`File.WriteAllText`), `ProfilePersistence.cs:27` (`PlayerPrefs.Save()`)
-- **Problem**: Three synchronous I/O operations fire at session end: file write (~1-5ms), directory scan + prune (~2-10ms), `PlayerPrefs.Save()` (~5-50ms on Android). Combined: **8-65ms**, blowing the 16.67ms frame budget at 60fps.
-- **Player Impact**: Visible frame hitch at level-complete moment. Feels broken on low-end Android (Samsung A13 class).
-- **Fix**: Move `FileSignalStorage.Save/Prune` to `ThreadPool.QueueUserWorkItem`. Remove `PlayerPrefs.Save()` from inline path -- let Unity auto-flush on `Activity.onStop()`.
-- **Effort**: 2-4 hours
-
----
-
-## HIGH-PRIORITY FINDINGS (Should Fix Before Ship)
-
-### DESIGN-001: 5-Session Cold Start Ignores 60% of Churning New Players
-- **Impact**: CRITICAL (Retention)
-- **Found by**: Game Designer
-- **Location**: `FlowChannelRule.cs` (requires `SessionsCompleted >= 5` via `Profile.HasSufficientData`)
-- **Problem**: DDA is dormant for the first 5 sessions. Industry data shows 60% of mobile puzzle players churn before level 10. These players get zero difficulty adjustment during the critical onboarding window.
-- **Fix**: Create `NewPlayerRule` (~100 lines) that provides gentler difficulty scaling using early signal data before Glicko-2 converges. Register before `FlowChannelRule` in `AdjustmentEngine`.
-- **Effort**: 4 hours
-
-### DESIGN-002: Static 30-70% Win Rate Band (Should Be Progression-Aware)
-- **Impact**: HIGH (Retention)
-- **Found by**: Game Designer
-- **Location**: `AdjustmentEngineConfig.cs` (TargetWinRateMin=0.3, TargetWinRateMax=0.7)
-- **Problem**: Industry benchmarks: Candy Crush targets 60-75% early tapering to 30-45% late-game. Royal Match and Toon Blast follow similar curves. A flat 30-70% band is too generous late-game (no challenge) and too punishing early (discourages new players).
-- **Fix**: Replace flat min/max with `AnimationCurve` fields keyed on `SessionsCompleted`. Default: 55-80% (levels 1-20) -> 40-65% (levels 50-100) -> 30-55% (levels 200+).
-- **Effort**: 3 hours
-
-### DESIGN-003: Zero Monetization Hooks in the Entire SDK
-- **Impact**: HIGH (Revenue)
-- **Found by**: Game Designer
-- **Location**: `SignalKeys.cs`, `FrustrationReliefRule.cs`, `ArchetypeAdjustmentStrategy.cs`
-- **Problem**: No economy signals defined. `FrustrationReliefRule` eases difficulty even when the player has unused boosters (bypassing the natural "use a booster" prompt). No booster-aware DDA policy. For any F2P publisher, this is a deal-breaker.
-- **Fix**: Add economy signal tier to `SignalKeys`. Add `IMonetizationContext` interface. Make `FrustrationReliefRule` optionally check booster inventory before easing. Document ethical guardrails.
-- **Effort**: 8 hours
-
-### DESIGN-004: ChurnRisk Archetype Scaling is Backwards
-- **Impact**: HIGH (Retention)
-- **Found by**: Game Designer
-- **Location**: `ArchetypeAdjustmentStrategy.cs:16` (ChurnRisk = 0.5x)
-- **Problem**: 0.5x scale means difficulty adjustments are **halved** for churn-risk players. These players need **accelerated easing**, not reduced response. A player about to quit should receive the strongest relief, not the weakest.
-- **Fix**: Change `ChurnRisk` from `0.5f` to `1.4f` and set `AllowUpwardAdjustment = false`.
-- **Effort**: 15 minutes
-
-### BUG-005: Glicko-2 Unbounded Loop on Degenerate Input
-- **Severity**: HIGH
-- **Found by**: Unity Engineer
-- **Location**: `GlickoPlayerModel.cs:164-168`
-- **Problem**: `while` loop searching for volatility bracket has no iteration cap. Degenerate input (NaN from corrupted save data) causes infinite loop, permanently freezing the main thread.
-- **Fix**: Add `&& k < 50` guard to the while condition. Add NaN/Infinity validation in `Deserialize()`.
-- **Effort**: 15 minutes
-
-### BUG-006: Singleton Breaks with Domain Reload Disabled
-- **Severity**: MEDIUM (Developer Experience)
-- **Found by**: Unity Engineer
-- **Location**: `CadenceManager.cs`
-- **Problem**: `_instance` static field survives between Play Mode sessions when domain reload is disabled (Enter Play Mode Options). New CadenceManager sees stale reference and self-destructs, leaving broken DDA state. Every developer using fast-enter-play-mode hits this.
-- **Fix**: Add `[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]` to reset `_instance` and `OnServiceInitialized`.
-- **Effort**: 15 minutes
-
-### BUG-007: ClampDeltas Comparison is Semantically Wrong
-- **Severity**: MEDIUM
-- **Found by**: QA Engineer
-- **Location**: `AdjustmentEngine.cs:136`
-- **Problem**: Compares raw absolute delta (`|ProposedValue - CurrentValue|`) against `maxDelta` (0.15 = 15% ratio). For parameters with value > 1 (most parameters: difficulty=100, move_limit=30), the clamp always triggers. Output is correct (percentage-based cap works), but the condition is over-eager.
-- **Fix**: Change to `Mathf.Abs(delta.Delta / delta.CurrentValue) > maxDelta`.
-- **Effort**: 15 minutes
-
----
-
-## MEDIUM-PRIORITY FINDINGS
-
-| # | Finding | Source | Location | Fix |
-|---|---|---|---|---|
-| DESIGN-005 | Sawtooth period (10 levels) too long for mobile sessions (3-7 levels) | Game Designer | `SawtoothCurveConfig.cs` | Reduce to 7, cap `BaselineDriftPerCycle` at 0.5 |
-| DESIGN-006 | No session fatigue detection (player at level 30 = level 1) | Game Designer | `FlowDetector.cs` | Add `LevelsThisSession` to `AdjustmentContext`, ease after 8+ levels |
-| DESIGN-007 | Level types missing secondary parameters | Game Designer | `LevelTypeDefaults.cs` | Define 2-3 secondary params per type, change GoalCollection to `goal_difficulty` |
-| DESIGN-008 | No live-ops / remote config / A/B testing | Game Designer | `DDAConfig.cs` | Add `IDDAConfigProvider` interface, emit analytics events |
-| QA-001 | 6 runtime classes completely untested | QA Engineer | Multiple | Write tests for ProfilePersistence, SignalReplay, FileSignalStorage, SignalLogSerializer, CooldownRule, CadenceManager |
-| QA-002 | PlayMode tests are synchronous (should be EditMode or true async) | QA Engineer | `DDAServiceIntegrationTests.cs` | Move to EditMode or convert to `[UnityTest]` |
-| ENG-001 | `SignalBatch.Entries` is mutable public `List<>` (encapsulation leak) | Unity Engineer | `SignalBatch.cs` | Make private, expose `IReadOnlyList<>`, add internal mutation methods |
-| ENG-002 | `GetEntries()` is dead code (zero callers) | Unity Engineer | `SignalBatch.cs` | Remove or redirect all callers to it |
-
----
-
-## ARCHITECTURE STRENGTHS (What's Done Well)
-
-1. **Zero-allocation hot path**: `FlowDetector.Tick()` and `SignalCollector.Record()` allocate nothing. `SignalRingBuffer` and `FlowWindow` are pre-allocated circular buffers. `RunningAverage` uses Welford's algorithm as a struct. Production-grade mobile code.
-
-2. **Clean interface segregation**: 8 interfaces (`IDDAService`, `ISignalCollector`, `IFlowDetector`, `IPlayerModel`, `IAdjustmentRule`, `ISessionAnalyzer`, `IDifficultyScheduler`, `IPlayerProfiler`) with composition-over-inheritance. Every system is independently testable and mockable.
-
-3. **Exemplary Odin conditional compilation**: 166 `#if ODIN_INSPECTOR` sites across 16 files, all with proper `#else` fallbacks to standard Unity attributes. Compiles cleanly with or without Odin. The dual-path attribute strategy is well-executed.
-
-4. **Signal tier architecture**: `SignalTier` (DecisionQuality, BehavioralTempo, StrategicPattern, RetryMeta, RawInput) creates a semantic hierarchy for signal processing priority. Scales well as signal vocabulary grows.
-
-5. **ScriptableObject config cascade**: `DDAConfig` -> sub-configs with null-safe fallback defaults everywhere. Designers tune without touching code. Every config value has both Odin tooltips AND standard Unity tooltips with detailed behavioral documentation.
-
-6. **Archetype-aware adjustment scaling**: `ArchetypeAdjustmentStrategy` modulates deltas per player type and blocks upward adjustments for at-risk players (StrugglingLearner, ChurnRisk). Goes beyond simple win-rate targeting.
-
-7. **Editor tooling excellence**: SandboxDashboard (manual testing), ScenarioSimulator (6-persona simulation + CSV export), DDADebugWindow (play-mode overlay), DifficultyCurvePreview, FlowStateVisualizer, SetupWizard. Best-in-class SDK developer experience.
-
-8. **Solid test foundation**: 88 test methods covering core subsystems. EditMode tests for all major algorithms (Glicko-2, FlowDetector, AdjustmentEngine, Scheduler, Profiler, Analyzer). Integration tests for the full DDA pipeline.
-
-9. **GC pressure is minimal where it matters**: `GetProposal()` allocates ~400-600B but is called once per session end (every 30-120 seconds), not per frame. The per-frame `Tick()` path allocates zero bytes.
-
----
-
-## TEST COVERAGE SUMMARY
-
-| Category | Classes | Tested | Coverage |
-|---|---|---|---|
-| Core algorithms (Glicko-2, FlowDetector, AdjustmentEngine, Scheduler, Profiler, Analyzer) | 6 | 6 | **100%** |
-| Rules (FlowChannel, StreakDamper, FrustrationRelief, Cooldown) | 4 | 3 | 75% |
-| Signal system (Collector, RingBuffer, FileStorage, Replay, Serializer) | 5 | 2 | 40% |
-| Integration (DDAService, CadenceManager, ProfilePersistence) | 3 | 1 | 33% |
-| Data types (configs, enums, structs) | ~25 | indirect | N/A |
-| **Overall testable class coverage** | **43** | **25** | **58%** |
-
-### Top 5 Untested Risk Areas
-1. `CooldownRule` direct behavior (never actually tested as working)
-2. `ProfilePersistence` (corrupted JSON, empty data, key collisions)
-3. `FileSignalStorage` (file I/O errors, disk full, permissions)
-4. `SignalLogSerializer` (round-trip fidelity, edge cases)
-5. `CadenceManager` lifecycle (null config, pause/resume, destroy during session)
-
----
-
-## POP CULTURE MARKET FIT ASSESSMENT
-
-### How well does Cadence serve Candy Crush / Royal Match / Toon Blast style games?
-
-**Strong fit (7/10) as an algorithmic engine:**
-- Glicko-2 player modeling is more sophisticated than most competitor DDA systems
-- Sawtooth scheduling maps naturally to world/chapter structure of pop puzzle games
-- 7 level types cover the standard pop puzzle vocabulary (Standard, MoveLimited, TimeLimited, GoalCollection, Boss, Breather, Tutorial)
-- Archetype detection maps to real player segments observed in top titles
-
-**Weak fit (4/10) as a shippable integration for F2P:**
-- No monetization awareness (F2P publishers will reject)
-- No remote config (live-ops teams can't tune without deploying)
-- No analytics events (data teams can't measure DDA impact)
-- New player experience is unprotected during highest-churn window
-- Static win rate band doesn't match the progression curve of top-grossing titles
-- ChurnRisk scaling works opposite to what retention science recommends
-
-**Path to 9/10 fit**: Implement the action plan below. The algorithmic foundation is excellent -- the gaps are in integration points for live-service operations, not core logic.
-
----
-
-## ACTION PLAN FOR DEVELOPERS
-
-### Phase 0: Critical Bug Fixes (Week 1, ~8 hours) -- COMPLETE
-
-| # | Task | File(s) | Effort | Impact | Status |
-|---|---|---|---|---|---|
-| 0.1 | Wire `CooldownRule.RecordAdjustment` into engine flow | `AdjustmentEngine.cs`, `DDAService.cs` | 1h | Fixes broken cooldowns | DONE |
-| 0.2 | Add `TotalPushed` to `SignalRingBuffer`, fix FlowDetector tracking | `SignalRingBuffer.cs`, `FlowDetector.cs` | 1h | Fixes blind flow detection | DONE |
-| 0.3 | Try/catch profile deserialization, fallback to fresh profile | `GlickoPlayerModel.cs`, `CadenceManager.cs` | 30m | Prevents startup crash | DONE |
-| 0.4 | Cap Glicko-2 bracket search loop (`k < 50`) | `GlickoPlayerModel.cs` | 15m | Prevents infinite loop | DONE |
-| 0.5 | Add NaN/Infinity guards to Glicko-2 output | `GlickoPlayerModel.cs` | 15m | Prevents NaN propagation | DONE |
-| 0.6 | Fix domain reload singleton reset | `CadenceManager.cs` | 15m | Fixes editor developer experience | DONE |
-| 0.7 | Fix ClampDeltas raw-vs-ratio comparison | `AdjustmentEngine.cs` | 15m | Correct clamping semantics | DONE |
-| 0.8 | Async file I/O for signal storage + remove inline `PlayerPrefs.Save()` | `FileSignalStorage.cs`, `ProfilePersistence.cs`, `CadenceManager.cs` | 3h | Eliminates 8-65ms frame spikes | DONE |
-
-**Phase 0 Verification KPIs:**
-- KPI-1: Cooldown blocks repeat proposals within configured window (new test) -- VERIFIED (`CooldownIntegrationTests.cs`)
-- KPI-2: FlowDetector processes signals correctly through 2x ring buffer capacity (new test) -- VERIFIED (`FlowDetectorOverflowTests.cs`)
-- KPI-3: Corrupted JSON input produces fresh profile, not crash (new test) -- VERIFIED (`GlickoSafetyTests.cs`)
-- KPI-4: `EndSession()` frame time < 2ms on Samsung A13 class device -- ADDRESSED (async I/O), requires device profiling
-
----
-
-### Phase 1: Retention-Critical Design Fixes (Weeks 2-3, ~20 hours) -- COMPLETE
-
-| # | Task | Effort | Impact | Status |
-|---|---|---|---|---|
-| 1.1 | Create `NewPlayerRule` for first-5-sessions DDA | 4h | Protects 60% of churning new players | DONE |
-| 1.2 | Make win rate band progression-aware (`AnimationCurve` fields) | 3h | Matches Candy Crush / Royal Match benchmarks | DONE |
-| 1.3 | Fix ChurnRisk scaling: 0.5x -> 1.4x easing, block all hardening | 15m | Retains at-risk players | DONE |
-| 1.4 | Reduce sawtooth period 10 -> 7, add `MaxBaselineDrift = 0.5f` cap | 1h | Fits mobile session length (3-7 levels) | DONE |
-| 1.5 | Add session fatigue modifier (ease after 8+ consecutive levels) | 2h | Natural stopping points, healthier sessions | DONE |
-| 1.6 | Define secondary parameters per level type (board_complexity, color_count, etc.) | 3h | Richer DDA vocabulary for designers | DONE |
-| 1.7 | Add streak quality detection (close loss vs blowout via Efficiency field) | 3h | Smarter emotional response | DONE |
-| 1.8 | Write regression tests for all Phase 0+1 changes | 4h | Prevent regressions | DONE |
-
-**Phase 1 Verification KPIs:**
-- KPI-5: NewPlayerRule engages for sessions 1-5 -- VERIFIED (`NewPlayerRuleTests.cs`, 5 tests)
-- KPI-6: Win rate band progression curves supported -- VERIFIED (`ProgressionBandTests.cs`, 2 tests)
-- KPI-7: ChurnRisk scaling changed from 0.5x to 1.4x -- VERIFIED (`ArchetypeAdjustmentStrategy.cs`)
-
-**New files created in Phase 1:**
-- `NewPlayerRule.cs` -- Gentle easing for first 5 sessions (15% -> 2% decay)
-- `SessionFatigueRule.cs` -- Opt-in fatigue easing after 8+ levels per session (2%/level, capped at 10%)
-- 6 test files: `CooldownIntegrationTests.cs`, `FlowDetectorOverflowTests.cs`, `GlickoSafetyTests.cs`, `NewPlayerRuleTests.cs`, `ProgressionBandTests.cs`, `StreakQualityTests.cs`
-
----
-
-### Phase 2: Monetization & Live-Ops Integration (Weeks 4-6, ~40 hours)
-
-| # | Task | Effort | Impact |
-|---|---|---|---|
-| 2.1 | Add economy signal tier (IAP events, booster use, ad views, currency balance) | 4h | Monetization awareness |
-| 2.2 | Create `IMonetizationContext` interface with booster inventory check | 3h | Clean integration point |
-| 2.3 | Make `FrustrationReliefRule` optionally booster-aware (delay easing if boosters available) | 3h | Natural booster purchase prompts |
-| 2.4 | Add `IDDAConfigProvider` interface for remote config override | 6h | Live-ops readiness |
-| 2.5 | Emit analytics events: `dda_adjustment_applied`, `flow_state_changed`, `archetype_classified`, `session_analyzed` | 4h | Data-driven tuning |
-| 2.6 | Design first A/B test framework (vary win rate band width) | 8h | Experimentation capability |
-| 2.7 | Tighten API encapsulation (`SignalBatch.Entries` -> private + `IReadOnlyList`) | 2h | SDK stability for external consumers |
-| 2.8 | Split assembly: `Cadence.Core` (noEngineReferences) + `Cadence` (Unity integration) | 4h | Server-side simulation capability |
-| 2.9 | Write tests for 6 untested runtime classes | 6h | Ship confidence |
-
-**Phase 2 Verification KPIs:**
-- KPI-8: At least 8 analytics events emitted per session for data team dashboards
-- KPI-9: Remote config override successfully changes win rate band without redeployment
-- KPI-10: Test coverage reaches 80%+ of testable runtime classes
-
----
-
-### Phase 3: Polish & Ship Prep (Weeks 7-8, ~16 hours)
-
-| # | Task | Effort | Impact |
-|---|---|---|---|
-| 3.1 | Mobile lifecycle handling (low-memory warning, background/foreground, disk I/O failure recovery) | 4h | Device stability |
-| 3.2 | PlayMode asmdef platform restriction (`includePlatforms: ["Editor"]`) | 15m | Clean release builds |
-| 3.3 | Main-thread assertions in debug builds (catch `RecordSignal` from background thread) | 1h | Early misuse detection |
-| 3.4 | Document `GetProposal()` allocation profile (~600B per call) | 1h | SDK transparency |
-| 3.5 | Cross-version compatibility validation (Unity 2021.3, 2022.3, Unity 6) | 2h | Broad adoption |
-| 3.6 | Performance profiling on target devices (Samsung A13, iPhone SE 3) | 4h | Verified mobile performance |
-| 3.7 | Final integration test suite (end-to-end, 6 personas, 500 levels each) | 4h | Ship confidence |
-
-**Phase 3 Verification KPIs:**
-- KPI-11: Zero NullReferenceExceptions across all editor tool scenarios (no config, null config, play/stop)
-- KPI-12: `Tick()` median < 0.5ms on Samsung A13
-- KPI-13: Clean compile on Unity 2021.3 LTS, 2022.3 LTS, and Unity 6
-
----
-
-## EFFORT SUMMARY
-
-| Phase | Duration | Effort | Score Impact | Status |
-|---|---|---|---|---|
-| Phase 0: Critical Bugs | Week 1 | ~8 hours | 6.3 -> 7.5 | **COMPLETE** |
-| Phase 1: Retention Design | Weeks 2-3 | ~20 hours | 7.5 -> 8.5 | **COMPLETE** |
-| Phase 2: Monetization & Live-Ops | Weeks 4-6 | ~40 hours | 8.5 -> 9.2 | Pending |
-| Phase 3: Polish & Ship | Weeks 7-8 | ~16 hours | 9.2 -> 9.5+ | Pending |
-| **Total** | **8 weeks** | **~84 hours** | **6.3 -> 9.5+** | **Phases 0-1 Done** |
-
----
-
-## SCORING METHODOLOGY
-
-Each specialist agent independently evaluated 10 SMART questions by reading every relevant source file, identifying specific line-number issues, rating severity, and proposing solutions:
-
-- **Architecture & Mobile (7.0/10)**: Strong zero-allocation hot paths, clean interfaces, solid config system. Deducted for broken cooldowns (-1.5), sync I/O (-1.0), domain reload (-0.5).
-- **QA & Testing (6.5/10)**: Good core test coverage (88 methods), deterministic tests. Deducted for FlowDetector stall bug (-1.5), crash-on-corrupt-JSON (-1.0), 6 untested classes (-0.5), PlayMode test misplacement (-0.5).
-- **Game Design & Pop Fit (5.5/10)**: Excellent algorithmic depth, strong editor tools. Deducted for no onboarding DDA (-1.5), static win rate band (-1.0), zero monetization (-1.0), no remote config (-0.5), backwards ChurnRisk scaling (-0.5).
-
----
-
-## APPENDIX A: Detailed Agent Reports
-
-### Unity Engineer Findings Summary
-
-| Q# | Topic | Severity | Status |
-|---|---|---|---|
-| Q1 | Duplicate cooldown state tracking | HIGH | BUG-001: CooldownRule.RecordAdjustment never called |
-| Q2 | Synchronous I/O on main thread | HIGH | BUG-004: 8-65ms spikes at session end |
-| Q3 | PlayMode test assembly scope | LOW | Safe via defineConstraints, but fragile |
-| Q4 | SignalBatch encapsulation leak | MEDIUM | ENG-001: Public mutable List, GetEntries() dead code |
-| Q5 | GC pressure from rule evaluation | LOW | ~600B per GetProposal(), acceptable (between-session only) |
-| Q6 | Assembly dependency graph | LOW | 22/48 files are pure C#, could split for server-side use |
-| Q7 | Singleton domain reload | MEDIUM | BUG-006: _instance not reset without domain reload |
-| Q8 | Glicko-2 numerical stability | LOW | Double precision correct, float truncation negligible. One unbounded loop. |
-| Q9 | Thread safety of DDAService | LOW | Documented as not-thread-safe, contract is clear |
-| Q10 | Odin conditional compilation | NONE | Exemplary. 166 sites, all correctly guarded |
-
-### QA Engineer Findings Summary
-
-| Q# | Topic | Severity | Status |
-|---|---|---|---|
-| Q1 | Test coverage gaps | HIGH | 6 runtime classes completely untested (58% coverage) |
-| Q2 | PlayMode test reliability | MEDIUM | Tests are synchronous, could be EditMode |
-| Q3 | Profile persistence edge cases | HIGH | Corrupted JSON crash (BUG-003), NaN propagation |
-| Q4 | SignalRingBuffer boundaries | LOW | Indexer math is correct, minor GC pinning on Clear() |
-| Q5 | FlowDetector state transitions | CRITICAL | BUG-002: Stops processing after buffer fill |
-| Q6 | Scenario simulator fidelity | LOW | No NaN paths, simulation model is sound |
-| Q7 | ClampDeltas correctness | MEDIUM | BUG-007: Condition over-eager, output correct |
-| Q8 | Editor tool null safety | LOW | Adequate null guards, 0 likely NullRef paths |
-| Q9 | Session analyzer robustness | LOW | Handles empty batch, Infinity, large batches |
-| Q10 | Cross-version compatibility | LOW | C# 8.0 minimum, compatible with Unity 2021.3+ and Unity 6 |
-
-### Game Designer Findings Summary
-
-| Q# | Topic | Impact | Status |
-|---|---|---|---|
-| Q1 | Win rate band (30-70% static) | HIGH | DESIGN-002: Should be progression-aware |
-| Q2 | Sawtooth period (10 levels) | MEDIUM | DESIGN-005: Too long for mobile sessions |
-| Q3 | Player archetypes | HIGH | DESIGN-004: ChurnRisk scaling backwards |
-| Q4 | Frustration timing | MEDIUM | Mid-session DDA is risky UX, needs per-type thresholds |
-| Q5 | Level type DDA gaps | MEDIUM | DESIGN-007: Missing secondary parameters |
-| Q6 | Streak thresholds | MEDIUM | Loss=3 may be too reactive, Win=5 too conservative |
-| Q7 | Monetization hooks | HIGH | DESIGN-003: Zero hooks in entire SDK |
-| Q8 | Session pacing & fatigue | MEDIUM | DESIGN-006: No fatigue concept |
-| Q9 | New player onboarding | CRITICAL | DESIGN-001: 5-session cold start |
-| Q10 | Live-ops readiness | HIGH | DESIGN-008: All params baked at build time |
-
----
-
-## APPENDIX B: File Reference Quick Index
-
-| System | Key Files | Approx Lines |
+| `FlowReading` | `CurrentFlow` | Real-time state, confidence, tempo, efficiency, engagement |
+| `SessionSummary` | `SessionAnalyzer` | Not public directly, but stored in debug data and fed into rules / player model |
+| `PlayerSkillProfile` | `PlayerProfile` | Rating, deviation, volatility, averages, recent history |
+| `PlayerArchetypeReading` | `CurrentArchetype` | Primary and secondary archetype labels |
+| `AdjustmentProposal` | `GetProposal(...)` | Deltas, reason, confidence, detected state, timing |
+| `DDADebugData` | `GetDebugSnapshot()` | Full tool-facing snapshot |
+
+## Acceptance Checks
+
+| Check | Result | Notes |
 |---|---|---|
-| Core Service | `DDAService.cs`, `IDDAService.cs`, `CadenceManager.cs`, `DDAConfig.cs` | ~500 |
-| Adjustment | `AdjustmentEngine.cs`, `FlowChannelRule.cs`, `StreakDamperRule.cs`, `FrustrationReliefRule.cs`, `CooldownRule.cs` | ~450 |
-| Player Model | `GlickoPlayerModel.cs`, `PlayerModelConfig.cs` | ~250 |
-| Flow Detection | `FlowDetector.cs`, `FlowWindow.cs`, `FlowDetectorConfig.cs` | ~250 |
-| Signals | `SignalCollector.cs`, `SignalRingBuffer.cs`, `FileSignalStorage.cs`, `SignalReplay.cs`, `SignalLogSerializer.cs` | ~500 |
-| Scheduling | `DifficultyScheduler.cs`, `SawtoothCurveConfig.cs` | ~200 |
-| Analysis | `SessionAnalyzer.cs`, `RunningAverage.cs` | ~200 |
-| Profiling | `PlayerProfiler.cs`, `ArchetypeAdjustmentStrategy.cs` | ~200 |
-| Data Types | 26 files (enums, structs, signal keys, level types) | ~600 |
-| Editor Tools | `SandboxDashboard.cs`, `ScenarioSimulator.cs`, `DDADebugWindow.cs`, + 11 more | ~3000 |
-| Tests | 9 test files, 88 test methods | ~1200 |
+| Move-limited and time-limited parameter directionality | **Pass** | Built-in defaults now declare polarity and rules translate semantic harder/easier into the correct numeric direction. |
+| Documented sample path vs real-time flow correctness | **Pass after this reconciliation** | README and sample integrations were updated to emit `MoveOptimal = 1/0` every move. The runtime contract is still brittle, but the sample path now matches it. |
+| Public custom-rule extensibility from the actual API surface | **Pass** | `IDDAService` now exposes single-rule registration plus provider hooks for rule packs and level-type config overrides. |
+| Next-level type handling with explicit proposal API | **Pass** | Proposal generation now always requires explicit next-level type context. |
+| Signal/docs parity for `tempo.interval`, `input.accuracy`, `resource.efficiency`, and abandonment signals | **Pass** | Those keys are now consumed by the runtime and documented accordingly. |
+| Redundancy and monolith hotspots in editor tools, rules, and samples | **Fail** | Oversized editor windows and duplicated integration snippets remain. |
 
----
+## Workstream Reports
 
-*Generated by 4-Agent Audit Pipeline*
-*Agents: Coordinator (project exploration + SMART questions) -> Unity Senior Engineer + QA Engineer + Puzzle Game Designer (parallel deep evaluation) -> Coordinator (final synthesis)*
-*Total source files inspected: 82 C# files + all configs, asmdefs, manifests*
-*Total test methods cataloged: 88*
+### 1. Research Track
+
+**Mission**: Build the benchmark for a casual tile / pop puzzle DDA system.
+
+**Findings**
+- Cadence aligns with classic DDA ideas around challenge bands and confidence-aware player modeling.
+- Cadence does not yet align with King-style puzzle difficulty practice, where authored blockers and content semantics matter as much as win rate.
+- Cadence also lacks a clear monetization / assist-policy layer, which matters for freemium puzzle production even when the DDA is internal.
+
+**Impact**
+- The project can be judged fairly as a strong generic adaptation engine.
+- It cannot currently be judged as world-class for casual tile content specifically.
+
+### 2. Core / API Track
+
+**Mission**: Inspect session lifecycle, public API, persistence, and developer integration.
+
+**Strengths**
+- `DDAService` is clean, readable, and low ceremony.
+- `CadenceManager` gives a workable drag-and-drop path for internal teams.
+- `GetDebugSnapshot()` and profile save/load make the system inspectable.
+- `RegisterRuleProvider(...)` and `RegisterLevelTypeConfigProvider(...)` now let projects extend rules and scalar semantics without forking runtime defaults.
+
+**Weaknesses**
+- External packaging is still not polished enough for third-party plugin expectations.
+- Real-time flow is public, but real-time intervention is not a real public workflow.
+
+**Verdict**
+- Good internal API.
+- Not yet a world-class SDK surface.
+
+### 3. Signals / Flow Track
+
+**Mission**: Verify what the flow detector and analyzer really consume.
+
+**Strengths**
+- The recent-signal processing path is now technically sound.
+- Live flow classification is cheap and well structured.
+
+**Weaknesses**
+- `MoveOptimal` is still the only live efficiency input.
+- `MoveWaste` still matters only after session analysis.
+- `TempoScore` is still based on interval consistency, not pure speed.
+- `HesitationTime` still affects session analysis, not live flow.
+
+**Impact**
+- The live flow contract is narrower than the product language suggests.
+- Integrations must be precise or they get misleading flow signals.
+
+### 4. Player Model / Profiling Track
+
+**Mission**: Evaluate Glicko-2 usage, cold start, and archetype logic.
+
+**Strengths**
+- The Glicko-2 implementation is competent and now protected against malformed profile data.
+- Cold start is materially better than the earlier dormant-first-five-sessions state because `NewPlayerRule` exists by default.
+- Archetype classification adds useful modulation.
+
+**Weaknesses**
+- The flow-channel rule is driven by `AverageOutcome`, not by runtime use of `PredictWinRate(...)`.
+- Effective opponent difficulty is still a coarse move-efficiency proxy.
+- Booster dependence and churn risk are profile heuristics, not puzzle-mechanic understanding.
+
+**Impact**
+- Strong player-modeling foundation.
+- Not yet as semantically grounded as the surrounding docs used to claim.
+
+### 5. Adjustment / Scheduling Track
+
+**Mission**: Evaluate the proposal engine, rules, level types, and sawtooth behavior.
+
+**Strengths**
+- Rules are understandable and deterministic.
+- Cooldown, new-player easing, and sawtooth scaling are now correctly wired.
+- Duplicate delta merge and relative clamping are defensible.
+
+**Weaknesses**
+- Parameter polarity and bounds exist for built-in scalar puzzle keys, but not for authored content semantics.
+- `SecondaryParameterKeys` are populated but not actually used by rule weighting.
+- Provider hooks now exist, but they still stop short of live-config injection or polished external packaging.
+
+**Impact**
+- This track contains the main publishability blocker for casual puzzle use.
+
+### 6. Editor / DX Track
+
+**Mission**: Assess practical developer usability.
+
+**Strengths**
+- Setup Wizard, Sandbox Dashboard, Scenario Simulator, Debug Window, and visual tools are a major asset.
+- Debugging the system is much easier than with most internal DDA prototypes.
+
+**Weaknesses**
+- The editor is concentrated in a few very large files:
+  - `ScenarioSimulator.cs` (~1112 lines)
+  - `SandboxDashboard.cs` (~1070 lines)
+  - `CadenceUpdateChecker.cs` (~661 lines)
+- Those monoliths are maintainability costs and make smaller improvements harder.
+
+**Verdict**
+- Strong internal tooling.
+- Not yet refined into clean, small, extensible editor modules.
+
+### 7. Tests / Quality Track
+
+**Mission**: Review tests and verify executable coverage where possible.
+
+**Strengths**
+- Core algorithm coverage is better than average for an internal Unity package.
+- Recent fixes are backed by targeted tests.
+
+**Weaknesses**
+- Important behavior is still not fully covered:
+  - provider precedence and failure-fallback paths
+  - richer board/content semantics that do not yet exist
+  - editor/tool refactors
+
+**Verification status**
+- Static test review: completed.
+- Unity CLI EditMode run: passed with machine-readable XML.
+- Unity CLI PlayMode run: passed with machine-readable XML.
+
+### 8. Docs Consistency Track
+
+**Mission**: Compare code, samples, and docs claim by claim.
+
+**Findings before reconciliation**
+- README and package README overclaimed game-agnostic scope.
+- Event-mapping docs previously overstated or misstated support for `tempo.interval`, `input.accuracy`, `resource.efficiency`, and `meta.abandoned`.
+- PRD described extension and signal behavior that had drifted from reality.
+- Inline comments still contained stale semantics such as "negative delta = easier" as if that were universally true.
+
+**Changes made in this pass**
+- READMEs narrowed to the actual supported scope and current contract.
+- Event-mapping docs were rewritten around supported-now vs declared-only signals.
+- PRD was rewritten as a current-state document, not an aspirational feature deck.
+- Samples and inline docs were corrected where they directly contradicted runtime behavior.
+- Audit conclusions were updated to reflect the runtime now shipping the formerly dormant signal path and default fatigue behavior.
+
+## Key Findings by Severity
+
+### Critical
+
+1. **Cadence is scalar-parameter-aware, not board-aware**
+   The system has no understanding of blockers, board topology, scripted hazards, or authored puzzle content. For casual tile games, that matters.
+
+### High
+
+2. **The public extension surface is improved, but still not SDK-ready**
+   Custom rules, rule packs, and level-type config providers are now registrable through `IDDAService`, but packaging is still internal-first.
+
+3. **The public extension surface is still narrower than the internal architecture**
+   Proposal safety is better now that next-level type is mandatory, and provider hooks now cover rule packs and scalar level semantics, but there is still no live-config or packaged plugin story.
+
+### Medium
+
+6. **Real-time flow is stronger than real-time action**
+   Cadence exposes live state, but not a clean live intervention pipeline.
+
+7. **Oversized editor classes are refactor pressure**
+   Tooling is valuable, but the large windows are becoming maintenance sinks.
+
+8. **Some inline comments still overgeneralize semantics**
+   The code comments needed cleanup to stop implying that numeric sign alone maps to difficulty direction.
+
+## Publishability Answer
+
+### Can this be published today?
+
+**As a broad external SDK: still no.**
+
+Reasons:
+- scalar puzzle safety is improved, but board/content semantics are still missing
+- the public extension surface is still internal-first rather than polished for external SDK consumers
+- puzzle fit is still not content-aware enough for an "any mobile puzzle game" claim
+- editor and extension refactors are still needed before external publication
+
+### Can this be used internally?
+
+**Yes, with scope discipline.**
+
+Reasonable internal use today:
+- a studio-owned casual puzzle project
+- engineers willing to explicitly manage parameter meaning
+- integrations that can obey the strict signal contract
+- teams treating Cadence as a proposal engine, not as a fully autonomous DDA stack
+
+## Modularity and Integration Answer
+
+### Is it modular?
+
+**Moderately.**
+
+Why:
+- runtime responsibilities are separated well
+- interfaces are generally clean
+- manager and service split is sensible
+- scalar parameter semantics and custom rule registration are now exposed enough for better internal extensibility
+- but provider hooks still need stronger packaging and live-config support
+
+### Is it easy to integrate?
+
+**Moderately easy for internal engineers, not truly easy for external consumers.**
+
+Easy parts:
+- `CadenceManager`
+- config assets
+- readable core service lifecycle
+- strong editor tools
+
+Hard parts:
+- strict `MoveOptimal = 1/0` per-move contract
+- next-level-type overload gotcha
+- unclear semantics for keys like `move_limit` and `time_limit`
+- no public hook for custom rules
+
+## Redundancy Inventory
+
+Static duplicate-code scan (`jscpd`) found only small clone groups, but structural redundancy still matters:
+
+1. Sample integration logic is repeated across all three sample scripts.
+2. Rule classes repeat similar "iterate level parameters and emit scaled delta" logic.
+3. `ScenarioSimulator`, `SandboxDashboard`, and `CadenceUpdateChecker` are monolithic and mix rendering, state management, and domain logic.
+4. `SignalBatch.Entries` is publicly mutable while `GetEntries()` exists but is largely unused, which is both redundant and leaky.
+5. `SecondaryParameterKeys` are configured but unused by the rules.
+
+## Refactor Roadmap
+
+### 1. Flow-detector correctness cleanup
+
+Do three things:
+- keep the strict `MoveOptimal = 1/0` contract explicit
+- decide whether `MoveWaste` should affect live efficiency too
+- separate "speed" from "consistency" if product language keeps using "tempo"
+
+Outcome:
+- live flow states become easier to interpret and integrate correctly
+
+### 2. Extension surface
+
+Expand beyond basic public rule registration:
+- alternate rule sets
+- packaged parameter semantics providers
+- safer lifecycle/config hooks
+
+Outcome:
+- Cadence becomes much more publishable as a toolkit
+
+### 3. Remove remaining public-surface ambiguity
+
+Do one thing:
+- decide whether `strategy.stored` should be wired or demoted from the public signal contract
+
+Outcome:
+- a smaller and more truthful public surface
+
+### 4. Editor decomposition
+
+Split large windows into:
+- shared graph helpers
+- simulation services
+- serialized editor state
+- small panel renderers
+
+Outcome:
+- tooling stays a strength without becoming a maintenance anchor
+
+### 5. One source of truth cleanup
+
+Keep these aligned:
+- root README
+- package README
+- PRD
+- event-mapping docs
+- inline XML docs
+
+Outcome:
+- much lower integration risk for the next developer
+
+## Verification Notes
+
+What was verified directly:
+- runtime, editor, tests, samples, and docs were reviewed line by line
+- static search was used to confirm call paths, signal consumers, and API exposure
+- duplicate-code scan was run across runtime, editor, and samples
+
+What was verified executable:
+- Unity batch compile/open pass succeeded
+- Unity EditMode tests passed and emitted `/tmp/cadence-editmode-results.xml`
+- Unity PlayMode tests passed and emitted `/tmp/cadence-playmode-results.xml`
+
+## Bottom Line
+
+Cadence is now a good internal DDA base for a first scalar-puzzle project if the studio understands its limits. It is **not** a world-class casual-tile DDA system yet, and it should **not** be published as a broad "works for any mobile puzzle game" solution until public extensibility and broader puzzle-content semantics are addressed.

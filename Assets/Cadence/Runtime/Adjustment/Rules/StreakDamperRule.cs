@@ -90,14 +90,11 @@ namespace Cadence.Rules
                 float current = kvp.Value;
                 if (current <= 0f) continue;
 
-                float delta = current * amount * direction;
-                proposal.Deltas.Add(new ParameterDelta
+                if (ParameterAdjustmentUtility.TryCreateDelta(context, kvp.Key, current,
+                    amount * direction, RuleName, out var delta))
                 {
-                    ParameterKey = kvp.Key,
-                    CurrentValue = current,
-                    ProposedValue = current + delta,
-                    RuleName = RuleName
-                });
+                    proposal.Deltas.Add(delta);
+                }
             }
         }
 

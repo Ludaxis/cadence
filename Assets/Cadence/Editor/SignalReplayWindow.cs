@@ -10,17 +10,16 @@ namespace Cadence.Editor
         private SignalReplay _replay;
         private SignalBatch _loadedBatch;
         private Vector2 _scrollPos;
-        private string _selectedFile;
         private string[] _availableFiles;
         private int _selectedFileIndex;
         private float _playbackSpeed = 1f;
+        private double _lastUpdateTime;
 
         // Replay analysis
         private ISessionAnalyzer _analyzer;
         private SessionSummary _summary;
-        private IFlowDetector _flowDetector;
+        private FlowDetector _flowDetector;
         private SignalRingBuffer _replayBuffer;
-
         [MenuItem("Cadence/Signal Replay")]
         public static void ShowWindow()
         {
@@ -30,7 +29,10 @@ namespace Cadence.Editor
         private void OnEnable()
         {
             _replay = new SignalReplay();
+            _replay.OnSignalReplayed += OnSignalReplayed;
             _analyzer = new SessionAnalyzer();
+            _flowDetector = new FlowDetector(null);
+            _replayBuffer = new SignalRingBuffer(512);
             RefreshFileList();
         }
 
@@ -38,7 +40,11 @@ namespace Cadence.Editor
         {
             if (_replay != null && _replay.IsPlaying)
             {
-                _replay.Tick(0.016f); // Simulate ~60fps
+                double now = EditorApplication.timeSinceStartup;
+                float dt = (float)(now - _lastUpdateTime);
+                _lastUpdateTime = now;
+                if (dt > 0f && dt < 0.5f)
+                    _replay.Tick(dt);
                 Repaint();
             }
         }
@@ -54,6 +60,8 @@ namespace Cadence.Editor
             if (_loadedBatch != null)
             {
                 DrawPlaybackControls();
+                EditorGUILayout.Space();
+                DrawFlowState();
                 EditorGUILayout.Space();
                 DrawBatchInfo();
                 EditorGUILayout.Space();
@@ -98,13 +106,22 @@ namespace Cadence.Editor
             EditorGUILayout.BeginHorizontal();
             if (!_replay.IsPlaying)
             {
-                if (GUILayout.Button("Play")) _replay.Play(_playbackSpeed);
+                if (GUILayout.Button("Play"))
+                {
+                    _lastUpdateTime = EditorApplication.timeSinceStartup;
+                    _replay.Play(_playbackSpeed);
+                }
             }
             else
             {
                 if (GUILayout.Button("Pause")) _replay.Pause();
             }
-            if (GUILayout.Button("Stop")) _replay.Stop();
+            if (GUILayout.Button("Stop"))
+            {
+                _replay.Stop();
+                _flowDetector.Reset();
+                _replayBuffer.Clear();
+            }
             EditorGUILayout.EndHorizontal();
 
             _playbackSpeed = EditorGUILayout.Slider("Speed", _playbackSpeed, 0.1f, 10f);
@@ -170,6 +187,37 @@ namespace Cadence.Editor
             EditorGUILayout.EndScrollView();
         }
 
+        private void OnSignalReplayed(SignalEntry entry)
+        {
+            _replayBuffer.Push(entry);
+            _flowDetector.Tick(0.016f, _replayBuffer);
+        }
+
+        private void DrawFlowState()
+        {
+            if (_flowDetector == null) return;
+
+            var reading = _flowDetector.CurrentReading;
+            EditorGUILayout.LabelField("Flow Detection (Live Replay)", EditorStyles.boldLabel);
+
+            // Color-coded flow state bar
+            var stateRect = EditorGUILayout.GetControlRect(false, 24);
+            Color flowColor = CadenceEditorStyles.GetFlowColor(reading.State);
+            flowColor.a = 0.6f;
+            EditorGUI.DrawRect(stateRect, flowColor);
+            var prevColor = GUI.color;
+            GUI.color = Color.white;
+            GUI.Label(stateRect, $"  {reading.State}  (Confidence: {reading.Confidence:F2})",
+                EditorStyles.boldLabel);
+            GUI.color = prevColor;
+
+            EditorGUI.indentLevel++;
+            EditorGUILayout.Slider("Tempo", reading.TempoScore, 0f, 1f);
+            EditorGUILayout.Slider("Efficiency", reading.EfficiencyScore, 0f, 1f);
+            EditorGUILayout.Slider("Engagement", reading.EngagementScore, 0f, 1f);
+            EditorGUI.indentLevel--;
+        }
+
         private void RefreshFileList()
         {
             string dir = Path.Combine(Application.persistentDataPath, "Cadence", "Signals");
@@ -200,6 +248,8 @@ namespace Cadence.Editor
             _loadedBatch = SignalLogSerializer.Deserialize(json);
             _replay.Load(_loadedBatch);
             _summary = _analyzer.Analyze(_loadedBatch);
+            _flowDetector.Reset();
+            _replayBuffer.Clear();
         }
     }
 }

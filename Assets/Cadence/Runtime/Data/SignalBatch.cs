@@ -27,7 +27,5 @@ namespace Cadence
             SessionStartTime = 0f;
             Entries.Clear();
         }
-
-        public IReadOnlyList<SignalEntry> GetEntries() => Entries;
     }
 }

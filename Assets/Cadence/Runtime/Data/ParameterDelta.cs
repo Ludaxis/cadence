@@ -36,7 +36,10 @@ namespace Cadence
 #endif
         public string RuleName;
 
-        /// <summary>The actual change: ProposedValue - CurrentValue. Negative = easier, Positive = harder.</summary>
+        /// <summary>
+        /// The raw numeric change: ProposedValue - CurrentValue.
+        /// Whether negative means easier or harder depends on the configured parameter semantics.
+        /// </summary>
         public float Delta => ProposedValue - CurrentValue;
     }
 }

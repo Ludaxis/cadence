@@ -43,10 +43,10 @@ namespace Cadence
 
 #if ODIN_INSPECTOR
         [TitleGroup("Sub-Configurations")]
-        [Required("AdjustmentEngineConfig is required. Controls all 4 adjustment rules + cooldowns.")]
+        [Required("AdjustmentEngineConfig is required. Controls all built-in adjustment rules, including session fatigue and cooldowns.")]
         [InlineEditor(InlineEditorObjectFieldModes.Foldout)]
 #else
-        [Tooltip("Adjustment rules that propose difficulty changes. Controls win-rate targeting, streak damping, frustration relief, and cooldowns. Create via Assets > Create > Cadence > Adjustment Engine Config.")]
+        [Tooltip("Adjustment rules that propose difficulty changes. Controls win-rate targeting, streak damping, frustration relief, new-player easing, session fatigue, and cooldowns. Create via Assets > Create > Cadence > Adjustment Engine Config.")]
 #endif
         public AdjustmentEngineConfig AdjustmentEngineConfig;
 

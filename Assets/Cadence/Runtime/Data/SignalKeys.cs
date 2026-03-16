@@ -43,7 +43,7 @@ namespace Cadence
         public const string MoveWaste = "move.waste";
 
         /// <summary>Resource efficiency signal. Value: 0-1.</summary>
-        /// <remarks>Optional enrichment for economy-aware games.</remarks>
+        /// <remarks>Feeds: SessionSummary.ResourceEfficiency01 -> EffectiveEfficiency01 -> SkillScore, Glicko-2, profiler trends.</remarks>
         public const string ResourceEfficiency = "resource.efficiency";
 
         /// <summary>Micro-progress per action (e.g., cells filled / total). Value: 0-1.</summary>
@@ -57,9 +57,9 @@ namespace Cadence
 
         /// <summary>Milliseconds since the previous move. Value: interval in seconds.</summary>
         /// <remarks>
-        /// Feeds: MeanInterMoveInterval (Welford mean), InterMoveVariance (Welford variance)
-        /// -> TempoConsistency -> EngagementScore (60% weight).
-        /// Also feeds FrustrationScore variance component (25% weight).
+        /// When any explicit tempo.interval is recorded in a session, it becomes authoritative for
+        /// tempo analysis and real-time flow detection. Timestamp-derived intervals stop for that session.
+        /// Non-positive values are ignored.
         /// </remarks>
         public const string InterMoveInterval = "tempo.interval";
 
@@ -109,7 +109,10 @@ namespace Cadence
         public const string SessionGapDays = "meta.session_gap";
 
         /// <summary>The level was abandoned (quit without finishing). Value: 1.0.</summary>
-        /// <remarks>Feeds: SessionOutcome mapping (outcome = Abandoned).</remarks>
+        /// <remarks>
+        /// Sets an explicit abandon flag for the active session. The host still calls EndSession(),
+        /// but the final outcome will be coerced to Abandoned when this signal was recorded.
+        /// </remarks>
         public const string LevelAbandoned = "meta.abandoned";
 
         // ─────────────────────────────────────────────────────
@@ -118,7 +121,7 @@ namespace Cadence
         // ─────────────────────────────────────────────────────
 
         /// <summary>Input accuracy metric. Value: 0-1.</summary>
-        /// <remarks>Mapped from perfect_percentage in event tracking.</remarks>
+        /// <remarks>Feeds: SessionSummary.InputAccuracy01 -> SkillScore enrichment and FrustrationScore enrichment.</remarks>
         public const string InputAccuracy = "input.accuracy";
 
         /// <summary>An invalid/rejected input was attempted. Value: 1.0 per rejection.</summary>

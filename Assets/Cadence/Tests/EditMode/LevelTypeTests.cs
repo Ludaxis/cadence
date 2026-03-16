@@ -14,17 +14,7 @@ namespace Cadence.Tests
         [SetUp]
         public void SetUp()
         {
-            _config = ScriptableObject.CreateInstance<AdjustmentEngineConfig>();
-            _config.TargetWinRateMin = 0.3f;
-            _config.TargetWinRateMax = 0.7f;
-            _config.DifficultyAdjustmentCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
-            _config.LossStreakThreshold = 3;
-            _config.WinStreakThreshold = 5;
-            _config.LossStreakEaseAmount = 0.10f;
-            _config.WinStreakHardenAmount = 0.05f;
-            _config.FrustrationReliefThreshold = 0.7f;
-            _config.GlobalCooldownSeconds = 0f;
-            _config.PerParameterCooldownSeconds = 0f;
+            _config = TestFixtureHelper.CreateDefaultConfig();
             _config.MaxDeltaPerAdjustment = 0.50f;
 
             _engine = new AdjustmentEngine(_config);
@@ -36,7 +26,7 @@ namespace Cadence.Tests
             var typeConfig = LevelTypeDefaults.GetDefaults(LevelType.Tutorial);
             Assert.IsFalse(typeConfig.DDAEnabled);
 
-            var context = CreateContext(10, 0.1f, LevelType.Tutorial);
+            var context = TestFixtureHelper.CreateContext(10, 0.1f, TestFixtureHelper.CreateHistory(10, 0.1f), LevelType.Tutorial);
             var proposal = _engine.Evaluate(context);
 
             // All rules should be skipped since DDAEnabled=false
@@ -50,7 +40,7 @@ namespace Cadence.Tests
             Assert.IsFalse(typeConfig.AllowUpwardAdjustment);
 
             // Player winning too much — normally would harden
-            var context = CreateContext(10, 0.85f, LevelType.Breather);
+            var context = TestFixtureHelper.CreateContext(10, 0.85f, TestFixtureHelper.CreateHistory(10, 0.85f), LevelType.Breather);
             var proposal = _engine.Evaluate(context);
 
             // FlowChannel should NOT add upward deltas
@@ -68,16 +58,16 @@ namespace Cadence.Tests
             Assert.AreEqual(0.3f, typeConfig.AdjustmentScale, 0.001f);
 
             // Low win rate — should ease, but at 0.3x scale
-            var bossContext = CreateContext(10, 0.1f, LevelType.Boss);
+            var bossContext = TestFixtureHelper.CreateContext(10, 0.1f, TestFixtureHelper.CreateHistory(10, 0.1f), LevelType.Boss);
             var bossProposal = _engine.Evaluate(bossContext);
 
             // Standard for comparison
-            var stdContext = CreateContext(10, 0.1f, LevelType.Standard);
+            var stdContext = TestFixtureHelper.CreateContext(10, 0.1f, TestFixtureHelper.CreateHistory(10, 0.1f), LevelType.Standard);
             var stdProposal = _engine.Evaluate(stdContext);
 
             // Both should have FlowChannel deltas, Boss should be smaller
-            float bossDelta = SumDeltasByRule(bossProposal, "FlowChannel");
-            float stdDelta = SumDeltasByRule(stdProposal, "FlowChannel");
+            float bossDelta = TestFixtureHelper.SumDeltasByRule(bossProposal, "FlowChannel");
+            float stdDelta = TestFixtureHelper.SumDeltasByRule(stdProposal, "FlowChannel");
 
             // Boss delta magnitude should be roughly 0.3x of standard
             if (stdDelta != 0f)
@@ -92,18 +82,33 @@ namespace Cadence.Tests
         {
             var typeConfig = LevelTypeDefaults.GetDefaults(LevelType.MoveLimited);
             Assert.AreEqual("move_limit", typeConfig.PrimaryParameterKey);
+            Assert.IsTrue(typeConfig.TryGetParameterSemantics("move_limit", out var moveLimitSemantics));
+            Assert.AreEqual(ParameterPolarity.HigherIsEasier, moveLimitSemantics.Polarity);
 
-            var context = CreateContext(10, 0.1f, LevelType.MoveLimited);
+            var context = TestFixtureHelper.CreateContext(10, 0.1f, TestFixtureHelper.CreateHistory(10, 0.1f), LevelType.MoveLimited);
             var proposal = _engine.Evaluate(context);
 
             // Find FlowChannel deltas
             float moveLimitDelta = 0f;
             float difficultyDelta = 0f;
+            float moveLimitProposed = 0f;
+            float moveLimitCurrent = 0f;
             foreach (var d in proposal.Deltas)
             {
                 if (d.RuleName != "FlowChannel") continue;
                 if (d.ParameterKey == "move_limit") moveLimitDelta = Mathf.Abs(d.Delta);
+                if (d.ParameterKey == "move_limit")
+                {
+                    moveLimitCurrent = d.CurrentValue;
+                    moveLimitProposed = d.ProposedValue;
+                }
                 if (d.ParameterKey == "difficulty") difficultyDelta = Mathf.Abs(d.Delta);
+            }
+
+            if (moveLimitCurrent > 0f)
+            {
+                Assert.Greater(moveLimitProposed, moveLimitCurrent,
+                    "Low win rate should ease move-limited levels by increasing move_limit");
             }
 
             // move_limit should get full magnitude, difficulty should get half
@@ -148,13 +153,24 @@ namespace Cadence.Tests
         }
 
         [Test]
+        public void TimeLimited_DefaultsUseHigherIsEasierPolarity()
+        {
+            var typeConfig = LevelTypeDefaults.GetDefaults(LevelType.TimeLimited);
+
+            Assert.IsTrue(typeConfig.TryGetParameterSemantics("time_limit", out var semantics));
+            Assert.AreEqual(ParameterPolarity.HigherIsEasier, semantics.Polarity);
+            Assert.IsTrue(semantics.HasMinValue);
+            Assert.AreEqual(1f, semantics.MinValue, 0.001f);
+        }
+
+        [Test]
         public void BreatherWinStreak_NoHardening()
         {
             var history = new List<SessionHistoryEntry>();
             for (int i = 0; i < 6; i++)
                 history.Add(new SessionHistoryEntry { Outcome = 1f });
 
-            var context = CreateContext(6, 1.0f, LevelType.Breather, history);
+            var context = TestFixtureHelper.CreateContext(6, 1.0f, history, LevelType.Breather);
             var proposal = _engine.Evaluate(context);
 
             // StreakDamper should NOT harden for Breather
@@ -166,65 +182,5 @@ namespace Cadence.Tests
             }
         }
 
-        // --- Helpers ---
-
-        private AdjustmentContext CreateContext(int sessionsCompleted, float averageOutcome,
-            LevelType levelType, List<SessionHistoryEntry> history = null)
-        {
-            if (history == null)
-                history = CreateHistory(sessionsCompleted, averageOutcome);
-
-            var typeConfig = LevelTypeDefaults.GetDefaults(levelType);
-
-            return new AdjustmentContext
-            {
-                Profile = new PlayerSkillProfile
-                {
-                    Rating = 1500f,
-                    Deviation = 100f,
-                    SessionsCompleted = sessionsCompleted,
-                    AverageOutcome = averageOutcome,
-                    RecentHistory = history
-                },
-                LastSession = new SessionSummary
-                {
-                    Outcome = averageOutcome > 0.5f ? SessionOutcome.Win : SessionOutcome.Lose,
-                    MoveEfficiency = averageOutcome
-                },
-                LastFlowReading = new FlowReading { State = FlowState.Flow },
-                LevelParameters = new Dictionary<string, float>
-                {
-                    { "difficulty", 100f },
-                    { "move_limit", 30f }
-                },
-                RecentHistory = history,
-                TimeSinceLastAdjustment = 1000f,
-                LevelType = levelType,
-                LevelTypeConfig = typeConfig
-            };
-        }
-
-        private static List<SessionHistoryEntry> CreateHistory(int count, float winRate)
-        {
-            var history = new List<SessionHistoryEntry>();
-            int wins = Mathf.RoundToInt(count * winRate);
-            for (int i = 0; i < count; i++)
-            {
-                history.Add(new SessionHistoryEntry
-                {
-                    Outcome = i < wins ? 1f : 0f,
-                    Efficiency = 0.5f
-                });
-            }
-            return history;
-        }
-
-        private static float SumDeltasByRule(AdjustmentProposal proposal, string ruleName)
-        {
-            float sum = 0f;
-            foreach (var d in proposal.Deltas)
-                if (d.RuleName == ruleName) sum += d.Delta;
-            return sum;
-        }
     }
 }

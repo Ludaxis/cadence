@@ -54,11 +54,12 @@ namespace Cadence
         public void UpdateFromSession(SessionSummary summary)
         {
             float actualScore = summary.Outcome == SessionOutcome.Win ? 1f : 0f;
+            float modelEfficiency = summary.ModelEfficiency01;
 
             // Use skill score as a proxy for level difficulty
             // Higher skill = higher effective opponent rating
             float effectiveLevelRating = _profile.Rating +
-                (summary.MoveEfficiency > EfficiencyThreshold ? EasyLevelRatingOffset : HardLevelRatingOffset);
+                (modelEfficiency > EfficiencyThreshold ? EasyLevelRatingOffset : HardLevelRatingOffset);
 
             UpdateGlicko2(actualScore, effectiveLevelRating, DefaultOpponentDeviation);
 
@@ -69,7 +70,7 @@ namespace Cadence
             // Running average of efficiency
             float n = _profile.SessionsCompleted;
             _profile.AverageEfficiency =
-                _profile.AverageEfficiency * ((n - 1f) / n) + summary.MoveEfficiency / n;
+                _profile.AverageEfficiency * ((n - 1f) / n) + modelEfficiency / n;
             _profile.AverageOutcome =
                 _profile.AverageOutcome * ((n - 1f) / n) + actualScore / n;
 
@@ -78,7 +79,7 @@ namespace Cadence
             // Record in history
             _profile.RecentHistory.Add(new SessionHistoryEntry
             {
-                Efficiency = summary.MoveEfficiency,
+                Efficiency = modelEfficiency,
                 Outcome = actualScore,
                 Duration = summary.Duration,
                 Moves = summary.TotalMoves,

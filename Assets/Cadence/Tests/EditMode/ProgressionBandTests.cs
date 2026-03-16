@@ -10,12 +10,7 @@ namespace Cadence.Tests
         [Test]
         public void FlowChannel_FlatBands_UsesConfigValues()
         {
-            var config = ScriptableObject.CreateInstance<AdjustmentEngineConfig>();
-            config.TargetWinRateMin = 0.3f;
-            config.TargetWinRateMax = 0.7f;
-            config.DifficultyAdjustmentCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
-            config.GlobalCooldownSeconds = 0f;
-            config.PerParameterCooldownSeconds = 0f;
+            var config = TestFixtureHelper.CreateDefaultConfig();
             config.MaxDeltaPerAdjustment = 0.5f;
             // Leave curves empty (default)
 
@@ -41,12 +36,7 @@ namespace Cadence.Tests
         [Test]
         public void FlowChannel_CurveBands_OverridesFlat()
         {
-            var config = ScriptableObject.CreateInstance<AdjustmentEngineConfig>();
-            config.TargetWinRateMin = 0.3f;
-            config.TargetWinRateMax = 0.7f;
-            config.DifficultyAdjustmentCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
-            config.GlobalCooldownSeconds = 0f;
-            config.PerParameterCooldownSeconds = 0f;
+            var config = TestFixtureHelper.CreateDefaultConfig();
             config.MaxDeltaPerAdjustment = 0.5f;
 
             // Set curves that widen the band to 0.1 - 0.9 at session 10

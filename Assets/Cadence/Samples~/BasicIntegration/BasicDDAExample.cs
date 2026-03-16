@@ -41,22 +41,24 @@ namespace Cadence.Samples
         public void OnPlayerMove(bool wasOptimal, float hesitationTime)
         {
             _dda.RecordSignal(SignalKeys.MoveExecuted);
-            if (wasOptimal)
-                _dda.RecordSignal(SignalKeys.MoveOptimal);
-            else
-                _dda.RecordSignal(SignalKeys.MoveWaste);
+            _dda.RecordSignal(SignalKeys.MoveOptimal, wasOptimal ? 1f : 0f,
+                SignalTier.DecisionQuality);
+
+            if (!wasOptimal)
+                _dda.RecordSignal(SignalKeys.MoveWaste, 1f, SignalTier.DecisionQuality);
 
             _dda.RecordSignal(SignalKeys.HesitationTime, hesitationTime, SignalTier.BehavioralTempo);
         }
 
         /// <summary>Call when the level ends.</summary>
-        public void OnLevelEnd(bool won, Dictionary<string, float> nextLevelParams)
+        public void OnLevelEnd(bool won, Dictionary<string, float> nextLevelParams,
+            LevelType nextLevelType = LevelType.Standard, int nextLevelIndex = -1)
         {
             var outcome = won ? SessionOutcome.Win : SessionOutcome.Lose;
             _dda.EndSession(outcome);
 
             // Get difficulty adjustment proposal for the next level
-            var proposal = _dda.GetProposal(nextLevelParams);
+            var proposal = _dda.GetProposal(nextLevelParams, nextLevelType, nextLevelIndex);
             Debug.Log($"Proposal: {proposal.Reason} (confidence: {proposal.Confidence:F2})");
 
             foreach (var delta in proposal.Deltas)

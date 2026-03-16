@@ -45,10 +45,11 @@ namespace Cadence.Samples
         public void OnPlayerMove(bool wasOptimal, float hesitationTime)
         {
             _dda.RecordSignal(SignalKeys.MoveExecuted);
-            if (wasOptimal)
-                _dda.RecordSignal(SignalKeys.MoveOptimal);
-            else
-                _dda.RecordSignal(SignalKeys.MoveWaste);
+            _dda.RecordSignal(SignalKeys.MoveOptimal, wasOptimal ? 1f : 0f,
+                SignalTier.DecisionQuality);
+
+            if (!wasOptimal)
+                _dda.RecordSignal(SignalKeys.MoveWaste, 1f, SignalTier.DecisionQuality);
             _dda.RecordSignal(SignalKeys.HesitationTime, hesitationTime,
                 SignalTier.BehavioralTempo);
         }

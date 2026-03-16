@@ -60,6 +60,45 @@ namespace Cadence
 
 #if ODIN_INSPECTOR
         [FoldoutGroup("Tier 0 — Decision Quality")]
+        [PropertyTooltip("Optional raw-input accuracy aggregate (0-1).\n" +
+                          "Averaged from input.accuracy signals when present.\n" +
+                          "Feeds: SkillScore enrichment, FrustrationScore enrichment.")]
+        [ProgressBar(0f, 1f)]
+#endif
+        public float InputAccuracy01;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 0 — Decision Quality")]
+        [PropertyTooltip("True when one or more input.accuracy signals were recorded this session.")]
+#endif
+        public bool HasInputAccuracy;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 0 — Decision Quality")]
+        [PropertyTooltip("Optional resource-efficiency aggregate (0-1).\n" +
+                          "Averaged from resource.efficiency signals when present.\n" +
+                          "Feeds: EffectiveEfficiency01 -> SkillScore, Glicko-2, profiler trends.")]
+        [ProgressBar(0f, 1f)]
+#endif
+        public float ResourceEfficiency01;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 0 — Decision Quality")]
+        [PropertyTooltip("True when one or more resource.efficiency signals were recorded this session.")]
+#endif
+        public bool HasResourceEfficiency;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 0 — Decision Quality")]
+        [PropertyTooltip("Effective decision efficiency used by the player model and derived skill score.\n" +
+                          "If resource.efficiency is present: (MoveEfficiency + ResourceEfficiency01) * 0.5.\n" +
+                          "Otherwise: MoveEfficiency.")]
+        [ProgressBar(0f, 1f)]
+#endif
+        public float EffectiveEfficiency01;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 0 — Decision Quality")]
         [PropertyTooltip("Ratio of wasted moves to total moves (0-1).\n" +
                           "Formula: total_waste / total_moves\n" +
                           "Feeds: FrustrationScore (30% weight).")]
@@ -155,6 +194,8 @@ namespace Cadence
             "Computed by SessionAnalyzer from the raw aggregates above.\n" +
             "These scores drive Glicko-2 updates and adjustment rules.")]
         [PropertyTooltip("SkillScore = MoveEfficiency * 0.7 + SequenceMatchRate * 0.3\n\n" +
+                          "Uses EffectiveEfficiency01 as the efficiency input, and blends in input.accuracy\n" +
+                          "when present before applying the 70/30 sequence split.\n\n" +
                           "How well the player solves levels relative to optimal play.\n" +
                           "Feeds: Glicko-2 update (via opponent rating shift), Flow Channel Rule.")]
         [ProgressBar(0f, 1f, 0.2f, 0.9f, 0.3f)]
@@ -177,15 +218,16 @@ namespace Cadence
 
 #if ODIN_INSPECTOR
         [TitleGroup("Derived Scores")]
-        [PropertyTooltip("FrustrationScore = WasteRatio * 0.30\n" +
-                          "                 + sqrt(Variance)/5 * 0.25\n" +
-                          "                 + PauseCount*0.15 * 0.20\n" +
-                          "                 + (1 - MoveEfficiency) * 0.25\n\n" +
+        [PropertyTooltip("FrustrationScore uses the default blend of waste, tempo variance, pauses,\n" +
+                          "and low MoveEfficiency. If input.accuracy is present, the formula adds a\n" +
+                          "10% inverse input-accuracy component and slightly rebalances the other weights.\n\n" +
                           "How overwhelmed or stuck the player is.\n" +
                           "Triggers FrustrationReliefRule when > 0.7.")]
         [ProgressBar(0f, 1f, 1f, 0.3f, 0.2f)]
         [LabelText("Frustration Score")]
 #endif
         public float FrustrationScore;
+
+        public float ModelEfficiency01 => HasResourceEfficiency ? EffectiveEfficiency01 : MoveEfficiency;
     }
 }

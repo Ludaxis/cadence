@@ -27,6 +27,7 @@ namespace Cadence
         private int _movesSeen;
         private float _lastMoveTime;
         private float _sessionTime;
+        private bool _usingExplicitInterMoveIntervals;
 
         // EMA smoothed scores
         private float _smoothedTempo;
@@ -59,6 +60,7 @@ namespace Cadence
             _movesSeen = 0;
             _lastMoveTime = -1f;
             _sessionTime = 0f;
+            _usingExplicitInterMoveIntervals = false;
             _smoothedTempo = 0.5f;
             _smoothedEfficiency = 0.5f;
             _smoothedEngagement = 0.5f;
@@ -147,12 +149,25 @@ namespace Cadence
             {
                 case SignalKeys.MoveExecuted:
                     _movesSeen++;
-                    if (_lastMoveTime >= 0f)
+                    if (!_usingExplicitInterMoveIntervals && _lastMoveTime >= 0f)
                     {
                         float interval = entry.Timestamp.SessionTime - _lastMoveTime;
                         _tempoWindow.Push(interval);
                     }
-                    _lastMoveTime = entry.Timestamp.SessionTime;
+                    if (!_usingExplicitInterMoveIntervals)
+                        _lastMoveTime = entry.Timestamp.SessionTime;
+                    break;
+
+                case SignalKeys.InterMoveInterval:
+                    if (!_usingExplicitInterMoveIntervals)
+                    {
+                        _usingExplicitInterMoveIntervals = true;
+                        _tempoWindow.Clear();
+                        _lastMoveTime = -1f;
+                    }
+
+                    if (entry.Value > 0f)
+                        _tempoWindow.Push(entry.Value);
                     break;
 
                 case SignalKeys.MoveOptimal:

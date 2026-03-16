@@ -48,6 +48,24 @@ namespace Cadence
         public int RingBufferCount;
 
 #if ODIN_INSPECTOR
+        [BoxGroup("Session")]
+        [PropertyTooltip("Completed levels in the current contiguous play session.")]
+#endif
+        public int LevelsThisSession;
+
+#if ODIN_INSPECTOR
+        [BoxGroup("Session")]
+        [PropertyTooltip("True when the completed-level count is past the fatigue threshold and the next proposal may get session-fatigue easing.")]
+#endif
+        public bool SessionFatigueActive;
+
+#if ODIN_INSPECTOR
+        [BoxGroup("Session")]
+        [PropertyTooltip("True when meta.abandoned has been recorded during the active session and EndSession() will coerce to Abandoned.")]
+#endif
+        public bool ExplicitAbandonPending;
+
+#if ODIN_INSPECTOR
         [BoxGroup("Flow Detection")]
         [PropertyTooltip("Current real-time flow state reading.")]
 #endif

@@ -10,15 +10,9 @@ namespace Cadence.Tests
         [Test]
         public void RecordAdjustment_BlocksRepeatProposal()
         {
-            var config = ScriptableObject.CreateInstance<AdjustmentEngineConfig>();
+            var config = TestFixtureHelper.CreateDefaultConfig();
             config.GlobalCooldownSeconds = 60f;
             config.PerParameterCooldownSeconds = 120f;
-            config.TargetWinRateMin = 0.3f;
-            config.TargetWinRateMax = 0.7f;
-            config.LossStreakThreshold = 3;
-            config.WinStreakThreshold = 5;
-            config.MaxDeltaPerAdjustment = 0.15f;
-            config.DifficultyAdjustmentCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
 
             var engine = new AdjustmentEngine(config);
 
@@ -28,12 +22,12 @@ namespace Cadence.Tests
                 {
                     Rating = 1500f, Deviation = 100f,
                     SessionsCompleted = 10, AverageOutcome = 0.15f,
-                    RecentHistory = CreateLossHistory(4)
+                    RecentHistory = TestFixtureHelper.CreateLossHistory(4)
                 },
                 LastSession = new SessionSummary { Outcome = SessionOutcome.Lose },
                 LastFlowReading = new FlowReading { State = FlowState.Flow },
                 LevelParameters = new Dictionary<string, float> { { "difficulty", 100f } },
-                RecentHistory = CreateLossHistory(4),
+                RecentHistory = TestFixtureHelper.CreateLossHistory(4),
                 TimeSinceLastAdjustment = 1000f
             };
 
@@ -53,15 +47,9 @@ namespace Cadence.Tests
         [Test]
         public void Cooldown_Expires_AllowsNewProposal()
         {
-            var config = ScriptableObject.CreateInstance<AdjustmentEngineConfig>();
+            var config = TestFixtureHelper.CreateDefaultConfig();
             config.GlobalCooldownSeconds = 10f;
             config.PerParameterCooldownSeconds = 10f;
-            config.TargetWinRateMin = 0.3f;
-            config.TargetWinRateMax = 0.7f;
-            config.LossStreakThreshold = 3;
-            config.WinStreakThreshold = 5;
-            config.MaxDeltaPerAdjustment = 0.15f;
-            config.DifficultyAdjustmentCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
 
             var engine = new AdjustmentEngine(config);
 
@@ -71,12 +59,12 @@ namespace Cadence.Tests
                 {
                     Rating = 1500f, Deviation = 100f,
                     SessionsCompleted = 10, AverageOutcome = 0.15f,
-                    RecentHistory = CreateLossHistory(4)
+                    RecentHistory = TestFixtureHelper.CreateLossHistory(4)
                 },
                 LastSession = new SessionSummary { Outcome = SessionOutcome.Lose },
                 LastFlowReading = new FlowReading { State = FlowState.Flow },
                 LevelParameters = new Dictionary<string, float> { { "difficulty", 100f } },
-                RecentHistory = CreateLossHistory(4),
+                RecentHistory = TestFixtureHelper.CreateLossHistory(4),
                 TimeSinceLastAdjustment = 100f
             };
 
@@ -89,12 +77,68 @@ namespace Cadence.Tests
             Assert.Greater(second.Deltas.Count, 0, "After cooldown expires, proposals should work again");
         }
 
-        private static List<SessionHistoryEntry> CreateLossHistory(int count)
+        [Test]
+        public void PerParameterCooldown_BlocksOneParam_AllowsOther()
         {
-            var list = new List<SessionHistoryEntry>();
-            for (int i = 0; i < count; i++)
-                list.Add(new SessionHistoryEntry { Outcome = 0f, Efficiency = 0.4f });
-            return list;
+            var config = TestFixtureHelper.CreateDefaultConfig();
+            config.GlobalCooldownSeconds = 0f; // No global cooldown
+            config.PerParameterCooldownSeconds = 100f; // Long per-param cooldown
+
+            var engine = new AdjustmentEngine(config);
+
+            // First proposal with "difficulty" only
+            var context1 = new AdjustmentContext
+            {
+                Profile = new PlayerSkillProfile
+                {
+                    Rating = 1500f, Deviation = 100f,
+                    SessionsCompleted = 10, AverageOutcome = 0.15f,
+                    RecentHistory = TestFixtureHelper.CreateLossHistory(4)
+                },
+                LastSession = new SessionSummary { Outcome = SessionOutcome.Lose },
+                LastFlowReading = new FlowReading { State = FlowState.Flow },
+                LevelParameters = new Dictionary<string, float> { { "difficulty", 100f } },
+                RecentHistory = TestFixtureHelper.CreateLossHistory(4),
+                TimeSinceLastAdjustment = 1000f,
+                LevelType = LevelType.Standard,
+                LevelTypeConfig = LevelTypeDefaults.GetDefaults(LevelType.Standard)
+            };
+
+            var first = engine.Evaluate(context1);
+            Assert.Greater(first.Deltas.Count, 0, "First proposal should have deltas");
+            engine.RecordAdjustment(first, 1000f);
+
+            // Second proposal immediately after, but with a NEW parameter "speed"
+            var context2 = new AdjustmentContext
+            {
+                Profile = context1.Profile,
+                LastSession = context1.LastSession,
+                LastFlowReading = context1.LastFlowReading,
+                LevelParameters = new Dictionary<string, float>
+                {
+                    { "difficulty", 100f },
+                    { "speed", 50f }
+                },
+                RecentHistory = context1.RecentHistory,
+                TimeSinceLastAdjustment = 1001f, // 1 second later
+                LevelType = LevelType.Standard,
+                LevelTypeConfig = LevelTypeDefaults.GetDefaults(LevelType.Standard)
+            };
+
+            var second = engine.Evaluate(context2);
+
+            // "difficulty" should be on cooldown, but "speed" should be allowed
+            bool hasDifficulty = false;
+            bool hasSpeed = false;
+            foreach (var d in second.Deltas)
+            {
+                if (d.ParameterKey == "difficulty") hasDifficulty = true;
+                if (d.ParameterKey == "speed") hasSpeed = true;
+            }
+
+            Assert.IsFalse(hasDifficulty, "difficulty should be blocked by per-parameter cooldown");
+            Assert.IsTrue(hasSpeed, "speed should NOT be blocked (not previously adjusted)");
         }
+
     }
 }

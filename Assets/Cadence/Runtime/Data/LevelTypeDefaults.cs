@@ -28,7 +28,93 @@ namespace Cadence
                 LevelType.MoveLimited    => new System.Collections.Generic.List<string> { "board_complexity", "color_count" },
                 LevelType.TimeLimited    => new System.Collections.Generic.List<string> { "spawn_rate", "board_complexity" },
                 LevelType.GoalCollection => new System.Collections.Generic.List<string> { "goal_variety", "board_complexity" },
-                _                        => null
+                _                        => new System.Collections.Generic.List<string>()
+            };
+
+            config.ParameterSemanticsEntries = type switch
+            {
+                LevelType.MoveLimited => new System.Collections.Generic.List<ParameterSemantics>
+                {
+                    new ParameterSemantics
+                    {
+                        ParameterKey = "move_limit",
+                        Polarity = ParameterPolarity.HigherIsEasier,
+                        Adjustable = true,
+                        HasMinValue = true,
+                        MinValue = 1f
+                    },
+                    new ParameterSemantics
+                    {
+                        ParameterKey = "board_complexity",
+                        Polarity = ParameterPolarity.HigherIsHarder,
+                        Adjustable = true,
+                        HasMinValue = true,
+                        MinValue = 0f
+                    },
+                    new ParameterSemantics
+                    {
+                        ParameterKey = "color_count",
+                        Polarity = ParameterPolarity.HigherIsHarder,
+                        Adjustable = true,
+                        HasMinValue = true,
+                        MinValue = 1f
+                    }
+                },
+                LevelType.TimeLimited => new System.Collections.Generic.List<ParameterSemantics>
+                {
+                    new ParameterSemantics
+                    {
+                        ParameterKey = "time_limit",
+                        Polarity = ParameterPolarity.HigherIsEasier,
+                        Adjustable = true,
+                        HasMinValue = true,
+                        MinValue = 1f
+                    },
+                    new ParameterSemantics
+                    {
+                        ParameterKey = "spawn_rate",
+                        Polarity = ParameterPolarity.HigherIsHarder,
+                        Adjustable = true,
+                        HasMinValue = true,
+                        MinValue = 0f
+                    },
+                    new ParameterSemantics
+                    {
+                        ParameterKey = "board_complexity",
+                        Polarity = ParameterPolarity.HigherIsHarder,
+                        Adjustable = true,
+                        HasMinValue = true,
+                        MinValue = 0f
+                    }
+                },
+                LevelType.GoalCollection => new System.Collections.Generic.List<ParameterSemantics>
+                {
+                    new ParameterSemantics
+                    {
+                        ParameterKey = "goal_count",
+                        Polarity = ParameterPolarity.HigherIsHarder,
+                        Adjustable = true,
+                        HasMinValue = true,
+                        MinValue = 1f
+                    },
+                    new ParameterSemantics
+                    {
+                        ParameterKey = "goal_variety",
+                        Polarity = ParameterPolarity.HigherIsHarder,
+                        Adjustable = true,
+                        HasMinValue = true,
+                        MinValue = 1f
+                    },
+                    new ParameterSemantics
+                    {
+                        ParameterKey = "board_complexity",
+                        Polarity = ParameterPolarity.HigherIsHarder,
+                        Adjustable = true,
+                        HasMinValue = true,
+                        MinValue = 0f
+                    }
+                },
+                _ => new System.Collections.Generic.List<ParameterSemantics>()
             };
 
             return config;

@@ -24,6 +24,8 @@ namespace Cadence
         private readonly ISignalStorage _storage;
         private readonly IDifficultyScheduler _scheduler;
         private readonly IPlayerProfiler _profiler;
+        private readonly List<ILevelTypeConfigProvider> _levelTypeConfigProviders =
+            new List<ILevelTypeConfigProvider>();
 
         private bool _sessionActive;
         private string _currentLevelId;
@@ -34,6 +36,9 @@ namespace Cadence
         private LevelType _currentLevelType;
         private LevelTypeConfig _currentLevelTypeConfig;
         private PlayerArchetypeReading _currentArchetype;
+        private bool _explicitAbandonRequested;
+        private int _levelsCompletedInCurrentPlaySession;
+        private float _lastCompletedLevelEndTime = float.NegativeInfinity;
 
         public bool IsSessionActive => _sessionActive;
         public FlowReading CurrentFlow => _flowDetector.CurrentReading;
@@ -75,10 +80,13 @@ namespace Cadence
 
             _currentLevelId = levelId;
             _currentLevelType = type;
-            _currentLevelTypeConfig = LevelTypeDefaults.GetDefaults(type);
+            _currentLevelTypeConfig = ResolveLevelTypeConfig(type);
             _currentLevelParams = levelParameters != null
                 ? new Dictionary<string, float>(levelParameters)
                 : new Dictionary<string, float>();
+            _explicitAbandonRequested = false;
+
+            ResetContiguousPlaySessionIfIdleGapExceeded(Time.unscaledTime);
 
             _sessionStartTime = Time.unscaledTime;
             _collector.Reset(levelId, _sessionStartTime);
@@ -105,6 +113,9 @@ namespace Cadence
         {
             if (!_sessionActive) return;
 
+            if (_explicitAbandonRequested)
+                outcome = SessionOutcome.Abandoned;
+
             // Record outcome signal
             float outcomeValue = outcome == SessionOutcome.Win ? 1f :
                                  outcome == SessionOutcome.Abandoned ? -1f : 0f;
@@ -127,6 +138,9 @@ namespace Cadence
                 _storage.Prune(maxSessions);
             }
 
+            _levelsCompletedInCurrentPlaySession++;
+            _lastCompletedLevelEndTime = Time.unscaledTime;
+            _explicitAbandonRequested = false;
             _sessionActive = false;
         }
 
@@ -134,6 +148,10 @@ namespace Cadence
             SignalTier tier = SignalTier.DecisionQuality, int moveIndex = -1)
         {
             if (!_sessionActive) return;
+
+            if (key == SignalKeys.LevelAbandoned)
+                _explicitAbandonRequested = true;
+
             _collector.Record(key, value, tier, moveIndex);
         }
 
@@ -142,11 +160,6 @@ namespace Cadence
             if (!_sessionActive) return;
             if (_config != null && !_config.EnableMidSessionDetection) return;
             _flowDetector.Tick(deltaTime, _collector.RecentSignals);
-        }
-
-        public AdjustmentProposal GetProposal(Dictionary<string, float> nextLevelParameters)
-        {
-            return GetProposal(nextLevelParameters, _currentLevelType, -1, null);
         }
 
         public AdjustmentProposal GetProposal(Dictionary<string, float> nextLevelParameters,
@@ -161,7 +174,7 @@ namespace Cadence
             if (_config != null && !_config.EnableBetweenSessionAdjustment)
                 return null;
 
-            var typeConfig = LevelTypeDefaults.GetDefaults(nextLevelType);
+            var typeConfig = ResolveLevelTypeConfig(nextLevelType);
 
             // Tutorial levels skip DDA entirely
             if (!typeConfig.DDAEnabled)
@@ -191,6 +204,7 @@ namespace Cadence
                 LevelTypeConfig = typeConfig,
                 SawtoothMultiplier = sawtoothMult,
                 CurrentLevelIndex = nextLevelIndex,
+                LevelsThisSession = _levelsCompletedInCurrentPlaySession,
                 ArchetypeReading = _currentArchetype
             };
 
@@ -205,6 +219,32 @@ namespace Cadence
         public float GetTargetMultiplier(int levelIndex)
         {
             return _scheduler != null ? _scheduler.GetTargetMultiplier(levelIndex) : 1f;
+        }
+
+        public void RegisterRule(IAdjustmentRule rule)
+        {
+            if (rule == null) return;
+            _adjustmentEngine.AddRule(rule);
+        }
+
+        public void RegisterRuleProvider(IAdjustmentRuleProvider provider)
+        {
+            if (provider == null) return;
+
+            try
+            {
+                _adjustmentEngine.AddRules(provider.CreateRules(_config));
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[Cadence] Rule provider '{provider.GetType().Name}' failed: {ex.Message}");
+            }
+        }
+
+        public void RegisterLevelTypeConfigProvider(ILevelTypeConfigProvider provider)
+        {
+            if (provider == null) return;
+            _levelTypeConfigProviders.Add(provider);
         }
 
         public DDADebugData GetDebugSnapshot()
@@ -222,7 +262,11 @@ namespace Cadence
                 LastProposal = _lastProposal,
                 CurrentLevelParams = _currentLevelParams,
                 CurrentLevelType = _currentLevelType,
-                ArchetypeReading = _currentArchetype
+                ArchetypeReading = _currentArchetype,
+                LevelsThisSession = _levelsCompletedInCurrentPlaySession,
+                SessionFatigueActive = IsSessionFatigueEnabled() &&
+                    _levelsCompletedInCurrentPlaySession >= GetFatigueThresholdLevels(),
+                ExplicitAbandonPending = _explicitAbandonRequested
             };
         }
 
@@ -241,6 +285,62 @@ namespace Cadence
         public string SaveProfile()
         {
             return _playerModel.Serialize();
+        }
+
+        private void ResetContiguousPlaySessionIfIdleGapExceeded(float currentTime)
+        {
+            if (float.IsNegativeInfinity(_lastCompletedLevelEndTime))
+                return;
+
+            float resetGapSeconds = GetFatigueResetGapSeconds();
+            if (resetGapSeconds <= 0f || currentTime - _lastCompletedLevelEndTime > resetGapSeconds)
+                _levelsCompletedInCurrentPlaySession = 0;
+        }
+
+        private float GetFatigueResetGapSeconds()
+        {
+            var adjustmentConfig = _config != null ? _config.AdjustmentEngineConfig : null;
+            float resetGapMinutes = adjustmentConfig != null
+                ? adjustmentConfig.SessionFatigueResetGapMinutes
+                : AdjustmentEngineConfig.DefaultSessionFatigueResetGapMinutes;
+            return Mathf.Max(0f, resetGapMinutes) * 60f;
+        }
+
+        private int GetFatigueThresholdLevels()
+        {
+            var adjustmentConfig = _config != null ? _config.AdjustmentEngineConfig : null;
+            int threshold = adjustmentConfig != null
+                ? adjustmentConfig.SessionFatigueThresholdLevels
+                : AdjustmentEngineConfig.DefaultSessionFatigueThresholdLevels;
+            return Mathf.Max(1, threshold);
+        }
+
+        private bool IsSessionFatigueEnabled()
+        {
+            var adjustmentConfig = _config != null ? _config.AdjustmentEngineConfig : null;
+            return adjustmentConfig == null || adjustmentConfig.EnableSessionFatigueRule;
+        }
+
+        private LevelTypeConfig ResolveLevelTypeConfig(LevelType type)
+        {
+            for (int i = _levelTypeConfigProviders.Count - 1; i >= 0; i--)
+            {
+                var provider = _levelTypeConfigProviders[i];
+                if (provider == null) continue;
+
+                try
+                {
+                    if (provider.TryGetLevelTypeConfig(type, out var config) && config != null)
+                        return config;
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning(
+                        $"[Cadence] LevelTypeConfig provider '{provider.GetType().Name}' failed for {type}: {ex.Message}");
+                }
+            }
+
+            return LevelTypeDefaults.GetDefaults(type);
         }
     }
 }

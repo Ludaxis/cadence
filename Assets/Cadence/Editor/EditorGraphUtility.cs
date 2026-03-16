@@ -74,26 +74,6 @@ namespace Cadence.Editor
             }
         }
 
-        public static void DrawBarChart(Rect area, float[] values, float minY, float maxY,
-            Color color, float barWidth = 0.6f)
-        {
-            if (values == null || values.Length == 0) return;
-
-            float slotWidth = area.width / values.Length;
-            float actualBarWidth = slotWidth * barWidth;
-
-            for (int i = 0; i < values.Length; i++)
-            {
-                float t = Mathf.InverseLerp(minY, maxY, values[i]);
-                float barHeight = t * area.height;
-                float x = area.x + slotWidth * i + (slotWidth - actualBarWidth) * 0.5f;
-                float y = area.yMax - barHeight;
-
-                var barRect = new Rect(x, y, actualBarWidth, barHeight);
-                EditorGUI.DrawRect(barRect, color);
-            }
-        }
-
         public static void DrawHorizontalLine(Rect area, float value, float minY, float maxY,
             Color color, float thickness = 1f)
         {

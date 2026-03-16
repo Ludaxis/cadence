@@ -122,6 +122,22 @@ namespace Cadence.Tests
         }
 
         [Test]
+        public void UpdateFromSession_UsesEffectiveEfficiencyWhenProvided()
+        {
+            _model.UpdateFromSession(new SessionSummary
+            {
+                Outcome = SessionOutcome.Win,
+                MoveEfficiency = 0.4f,
+                HasResourceEfficiency = true,
+                ResourceEfficiency01 = 0.8f,
+                EffectiveEfficiency01 = 0.6f
+            });
+
+            Assert.AreEqual(0.6f, _model.Profile.AverageEfficiency, 0.01f);
+            Assert.AreEqual(0.6f, _model.Profile.RecentHistory[0].Efficiency, 0.01f);
+        }
+
+        [Test]
         public void PredictWinRate_HigherRatingMeansHigherPrediction()
         {
             // Default rating 1500 vs level difficulty 1500 → ~50%

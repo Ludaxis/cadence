@@ -146,6 +146,98 @@ namespace Cadence.Tests
             Assert.LessOrEqual(summary.FrustrationScore, 1f);
         }
 
+        [Test]
+        public void Analyze_ExplicitIntervalsOverrideDerivedTimestamps()
+        {
+            var batch = new SignalBatch();
+
+            AddSignal(batch, SignalKeys.MoveExecuted, 1f, 0f, 0);
+            AddSignal(batch, SignalKeys.MoveOptimal, 1f, 0f, 0);
+
+            AddSignal(batch, SignalKeys.MoveExecuted, 1f, 5f, 1);
+            AddSignal(batch, SignalKeys.MoveOptimal, 1f, 5f, 1);
+            AddSignal(batch, SignalKeys.InterMoveInterval, 1f, 5f, 1);
+
+            AddSignal(batch, SignalKeys.MoveExecuted, 1f, 11f, 2);
+            AddSignal(batch, SignalKeys.MoveOptimal, 1f, 11f, 2);
+            AddSignal(batch, SignalKeys.InterMoveInterval, 1f, 11f, 2);
+
+            var summary = _analyzer.Analyze(batch);
+
+            Assert.AreEqual(1f, summary.MeanInterMoveInterval, 0.01f);
+            Assert.AreEqual(0f, summary.InterMoveVariance, 0.01f);
+        }
+
+        [Test]
+        public void Analyze_WithoutExplicitIntervals_UsesMoveTimestamps()
+        {
+            var batch = new SignalBatch();
+
+            AddSignal(batch, SignalKeys.MoveExecuted, 1f, 0f, 0);
+            AddSignal(batch, SignalKeys.MoveExecuted, 1f, 2f, 1);
+            AddSignal(batch, SignalKeys.MoveExecuted, 1f, 5f, 2);
+
+            var summary = _analyzer.Analyze(batch);
+
+            Assert.AreEqual(2.5f, summary.MeanInterMoveInterval, 0.01f);
+            Assert.Greater(summary.InterMoveVariance, 0f);
+        }
+
+        [Test]
+        public void Analyze_InputAccuracy_ChangesSkillAndFrustration()
+        {
+            var batch = new SignalBatch();
+            for (int i = 0; i < 4; i++)
+            {
+                AddSignal(batch, SignalKeys.MoveExecuted, 1f, i, i);
+                AddSignal(batch, SignalKeys.MoveOptimal, i < 2 ? 1f : 0f, i, i);
+                AddSignal(batch, SignalKeys.MoveWaste, 0.5f, i, i);
+                AddSignal(batch, SignalKeys.InputAccuracy, 0.2f, i, i);
+            }
+            AddSignal(batch, SignalKeys.PauseTriggered, 1f, 4f);
+            AddSignal(batch, SignalKeys.PauseTriggered, 1f, 5f);
+
+            var summary = _analyzer.Analyze(batch);
+
+            Assert.IsTrue(summary.HasInputAccuracy);
+            Assert.AreEqual(0.2f, summary.InputAccuracy01, 0.01f);
+            Assert.AreEqual(0.30f, summary.SkillScore, 0.02f);
+            Assert.AreEqual(0.379f, summary.FrustrationScore, 0.02f);
+        }
+
+        [Test]
+        public void Analyze_ResourceEfficiency_ChangesEffectiveEfficiency()
+        {
+            var batch = new SignalBatch();
+            for (int i = 0; i < 4; i++)
+            {
+                AddSignal(batch, SignalKeys.MoveExecuted, 1f, i, i);
+                AddSignal(batch, SignalKeys.MoveOptimal, i < 2 ? 1f : 0f, i, i);
+            }
+            AddSignal(batch, SignalKeys.ResourceEfficiency, 0.9f, 1f);
+            AddSignal(batch, SignalKeys.ResourceEfficiency, 0.7f, 2f);
+
+            var summary = _analyzer.Analyze(batch);
+
+            Assert.IsTrue(summary.HasResourceEfficiency);
+            Assert.AreEqual(0.8f, summary.ResourceEfficiency01, 0.01f);
+            Assert.AreEqual(0.65f, summary.EffectiveEfficiency01, 0.01f);
+            Assert.AreEqual(0.455f, summary.SkillScore, 0.02f);
+        }
+
+        [Test]
+        public void Analyze_LevelAbandoned_OverridesSessionOutcome()
+        {
+            var batch = new SignalBatch();
+            AddSignal(batch, SignalKeys.MoveExecuted, 1f, 1f);
+            AddSignal(batch, SignalKeys.LevelAbandoned, 1f, 2f);
+            AddSignal(batch, SignalKeys.SessionOutcome, 1f, 3f);
+
+            var summary = _analyzer.Analyze(batch);
+
+            Assert.AreEqual(SessionOutcome.Abandoned, summary.Outcome);
+        }
+
         // --- Helpers ---
 
         private static SignalBatch CreateBatchWithMoves(int totalMoves, int optimalMoves)
