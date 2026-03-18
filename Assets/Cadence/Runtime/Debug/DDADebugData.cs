@@ -66,6 +66,24 @@ namespace Cadence
         public bool ExplicitAbandonPending;
 
 #if ODIN_INSPECTOR
+        [BoxGroup("Session")]
+        [PropertyTooltip("Par moves for the current level (from level parameters).")]
+#endif
+        public float ParMoves;
+
+#if ODIN_INSPECTOR
+        [BoxGroup("Session")]
+        [PropertyTooltip("Skill index from the last session summary.")]
+#endif
+        public float SkillIndex;
+
+#if ODIN_INSPECTOR
+        [BoxGroup("Session")]
+        [PropertyTooltip("True when the last session was a replay (play_type == 2).")]
+#endif
+        public bool IsReplaySession;
+
+#if ODIN_INSPECTOR
         [BoxGroup("Flow Detection")]
         [PropertyTooltip("Current real-time flow state reading.")]
 #endif

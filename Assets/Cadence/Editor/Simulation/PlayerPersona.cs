@@ -17,6 +17,7 @@ namespace Cadence.Editor
         public float MeanInterMoveTime;
         public float BoosterUseRate;
         public float PauseRate;
+        public float UndoRate;
         public float SkillGrowthRate;
 
         /// <summary>
@@ -39,6 +40,7 @@ namespace Cadence.Editor
             MeanInterMoveTime = 3.0f,
             BoosterUseRate = 0.1f,
             PauseRate = 0.15f,
+            UndoRate = 0.10f,
             SkillGrowthRate = 0.03f
         };
 
@@ -53,6 +55,7 @@ namespace Cadence.Editor
             MeanInterMoveTime = 2.0f,
             BoosterUseRate = 0.15f,
             PauseRate = 0.10f,
+            UndoRate = 0.05f,
             SkillGrowthRate = 0.01f
         };
 
@@ -67,6 +70,7 @@ namespace Cadence.Editor
             MeanInterMoveTime = 1.2f,
             BoosterUseRate = 0.02f,
             PauseRate = 0.02f,
+            UndoRate = 0.01f,
             SkillGrowthRate = 0.002f
         };
 
@@ -81,6 +85,7 @@ namespace Cadence.Editor
             MeanInterMoveTime = 0.8f,
             BoosterUseRate = 0.0f,
             PauseRate = 0.0f,
+            UndoRate = 0.0f,
             SkillGrowthRate = 0.005f
         };
 
@@ -95,6 +100,7 @@ namespace Cadence.Editor
             MeanInterMoveTime = 4.0f,
             BoosterUseRate = 0.30f,
             PauseRate = 0.25f,
+            UndoRate = 0.30f,
             SkillGrowthRate = 0.015f
         };
 
@@ -109,6 +115,7 @@ namespace Cadence.Editor
             MeanInterMoveTime = 5.0f,
             BoosterUseRate = 0.05f,
             PauseRate = 0.30f,
+            UndoRate = 0.20f,
             SkillGrowthRate = -0.01f
         };
 

@@ -90,6 +90,7 @@ namespace Cadence
 
             _sessionStartTime = Time.unscaledTime;
             _collector.Reset(levelId, _sessionStartTime);
+            _collector.CurrentBatch.LevelParameters = _currentLevelParams;
             _flowDetector.Reset();
             _sessionActive = true;
 
@@ -127,8 +128,9 @@ namespace Cadence
             _lastSessionSummary.Outcome = outcome;
             _lastSessionSummary.LevelType = _currentLevelType;
 
-            // Update player model
-            _playerModel.UpdateFromSession(_lastSessionSummary);
+            // Update player model (skip for replay sessions)
+            if (!_lastSessionSummary.IsReplay)
+                _playerModel.UpdateFromSession(_lastSessionSummary);
 
             // Persist signals if storage is available
             if (_storage != null && (_config == null || _config.EnableSignalStorage))
@@ -138,7 +140,8 @@ namespace Cadence
                 _storage.Prune(maxSessions);
             }
 
-            _levelsCompletedInCurrentPlaySession++;
+            if (!_lastSessionSummary.IsReplay)
+                _levelsCompletedInCurrentPlaySession++;
             _lastCompletedLevelEndTime = Time.unscaledTime;
             _explicitAbandonRequested = false;
             _sessionActive = false;
@@ -173,6 +176,9 @@ namespace Cadence
         {
             if (_config != null && !_config.EnableBetweenSessionAdjustment)
                 return null;
+
+            if (_lastSessionSummary.IsReplay)
+                return new AdjustmentProposal { Timing = AdjustmentTiming.BeforeNextLevel };
 
             var typeConfig = ResolveLevelTypeConfig(nextLevelType);
 
@@ -266,7 +272,11 @@ namespace Cadence
                 LevelsThisSession = _levelsCompletedInCurrentPlaySession,
                 SessionFatigueActive = IsSessionFatigueEnabled() &&
                     _levelsCompletedInCurrentPlaySession >= GetFatigueThresholdLevels(),
-                ExplicitAbandonPending = _explicitAbandonRequested
+                ExplicitAbandonPending = _explicitAbandonRequested,
+                ParMoves = _currentLevelParams != null && _currentLevelParams.ContainsKey("par_moves")
+                    ? _currentLevelParams["par_moves"] : 0f,
+                SkillIndex = _lastSessionSummary.SkillIndex,
+                IsReplaySession = _lastSessionSummary.IsReplay
             };
         }
 

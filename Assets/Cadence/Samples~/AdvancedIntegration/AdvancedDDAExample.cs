@@ -59,6 +59,28 @@ namespace Cadence.Samples
             _dda.RecordSignal(SignalKeys.PowerUpUsed, 1f, SignalTier.StrategicPattern);
         }
 
+        /// <summary>Call when the player undoes an action.</summary>
+        public void OnUndo()
+        {
+            _dda.RecordSignal(SignalKeys.Undo, 1f, SignalTier.StrategicPattern);
+        }
+
+        /// <summary>Call when a frustration trigger is shown (e.g. revive prompt).</summary>
+        public void OnFrustrationTriggerShown()
+        {
+            _dda.RecordSignal(SignalKeys.FrustrationTrigger, 1f, SignalTier.RetryMeta);
+        }
+
+        /// <summary>
+        /// Call when beginning a replay of a previously completed level.
+        /// Replay sessions skip Glicko-2 updates so the player's rating isn't distorted.
+        /// </summary>
+        public void OnReplayLevelStart(string levelId, Dictionary<string, float> baseParams)
+        {
+            _dda.BeginSession(levelId, baseParams, LevelType.Standard);
+            _dda.RecordSignal(SignalKeys.PlayType, SignalKeys.PlayTypeReplay, SignalTier.RetryMeta);
+        }
+
         /// <summary>
         /// Call when the level ends. Gets a proposal that accounts for
         /// level type, player archetype, and sawtooth position.

@@ -13,6 +13,7 @@ namespace Cadence
         public string LevelId;
         public float SessionStartTime;
         public List<SignalEntry> Entries = new List<SignalEntry>();
+        public Dictionary<string, float> LevelParameters;
 
         public int Count => Entries.Count;
 
@@ -26,6 +27,7 @@ namespace Cadence
             LevelId = null;
             SessionStartTime = 0f;
             Entries.Clear();
+            LevelParameters = null;
         }
     }
 }

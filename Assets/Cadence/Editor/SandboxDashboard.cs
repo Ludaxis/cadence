@@ -526,6 +526,17 @@ namespace Cadence.Editor
                         $"{_lastSessionSummary.MeanInterMoveInterval:F2}s (var: {_lastSessionSummary.InterMoveVariance:F3})");
                     EditorGUILayout.LabelField("Pauses", _lastSessionSummary.PauseCount.ToString());
                     EditorGUILayout.LabelField("Power-Ups", _lastSessionSummary.PowerUpsUsed.ToString());
+                    EditorGUILayout.LabelField("Power-Up Attempts", _lastSessionSummary.PowerUpAttempts.ToString());
+                    EditorGUILayout.LabelField("Undos", $"{_lastSessionSummary.UndoCount} (peak streak: {_lastSessionSummary.PeakUndoStreak})");
+
+                    if (_lastSessionSummary.HasSkillIndex)
+                    {
+                        EditorGUILayout.LabelField("Par Moves", _lastSessionSummary.ParMoves.ToString());
+                        DrawProgressBar("Skill Index", _lastSessionSummary.SkillIndex);
+                    }
+
+                    if (_lastSessionSummary.IsReplay)
+                        EditorGUILayout.HelpBox("Replay session — Glicko-2 update was skipped.", MessageType.Info);
 
                     EditorGUILayout.Space(2);
                     EditorGUILayout.LabelField("Derived Scores", EditorStyles.miniLabel);

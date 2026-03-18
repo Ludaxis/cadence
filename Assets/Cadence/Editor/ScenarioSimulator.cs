@@ -23,6 +23,7 @@ namespace Cadence.Editor
         };
         private bool[] _personaEnabled;
         private PlayerPersona[] _personas;
+        private int _parMoves = 20;
         private bool _showBaseline = true;
 
         // ════════════════════════════════════════════════════════════
@@ -159,6 +160,10 @@ namespace Cadence.Editor
             }
             if (GUILayout.Button("+ Add Parameter"))
                 _paramEntries.Add(new CadenceEditorStyles.ParamEntry { Key = "param", Value = 1f });
+
+            EditorGUILayout.Space(4);
+            _parMoves = EditorGUILayout.IntField("Par Moves", _parMoves);
+            if (_parMoves < 0) _parMoves = 0;
 
             // Personas
             EditorGUILayout.Space(8);
@@ -845,6 +850,7 @@ namespace Cadence.Editor
                     MeanInterMoveTime = persona.MeanInterMoveTime,
                     BoosterUseRate = persona.BoosterUseRate,
                     PauseRate = persona.PauseRate,
+                    UndoRate = persona.UndoRate,
                     SkillGrowthRate = persona.SkillGrowthRate,
                 };
 
@@ -913,8 +919,10 @@ namespace Cadence.Editor
                 float playerDeviation = 350f;
 
                 // Full runtime loop (both DDA and baseline)
-                service.BeginSession("level_" + i,
-                    new Dictionary<string, float>(currentParams), levelType);
+                var sessionParams = new Dictionary<string, float>(currentParams);
+                if (_parMoves > 0)
+                    sessionParams["par_moves"] = _parMoves;
+                service.BeginSession("level_" + i, sessionParams, levelType);
 
                 InjectSignals(service, persona, won, abandoned, rng, i);
 
@@ -977,6 +985,9 @@ namespace Cadence.Editor
                     MeanInterMoveInterval = sessionSummary.MeanInterMoveInterval,
                     InputAccuracy01 = sessionSummary.InputAccuracy01,
                     ResourceEfficiency01 = sessionSummary.ResourceEfficiency01,
+                    ParMoves = sessionSummary.ParMoves,
+                    ActualMoves = sessionSummary.TotalMoves,
+                    SkillIndex = sessionSummary.SkillIndex,
                     AdjustedParams = new Dictionary<string, float>(currentParams),
                     AdjustmentDelta = adjustmentDelta
                 });
@@ -1029,6 +1040,19 @@ namespace Cadence.Editor
                 service.Tick(persona.MeanInterMoveTime);
             }
 
+            // Undos
+            if (rng.NextDouble() < persona.UndoRate)
+            {
+                int undoCount = 1 + (int)(rng.NextDouble() * 3);
+                for (int u = 0; u < undoCount; u++)
+                {
+                    service.RecordSignal(SignalKeys.Undo, 1f,
+                        SignalTier.StrategicPattern);
+                }
+                service.RecordSignal(SignalKeys.UndoStreak, undoCount,
+                    SignalTier.StrategicPattern);
+            }
+
             // Boosters
             if (rng.NextDouble() < persona.BoosterUseRate)
             {
@@ -1075,7 +1099,7 @@ namespace Cadence.Editor
             sb.Append("Persona,DDA,LevelIndex,LevelType,SawtoothMultiplier,Won,");
             sb.Append("PlayerRating,PlayerDeviation,FlowState,RollingWinRate,AdjustmentDelta,");
             sb.Append("LevelsThisSession,SessionFatigueActive,WasAbandoned,MeanInterMoveInterval,");
-            sb.Append("InputAccuracy01,ResourceEfficiency01");
+            sb.Append("InputAccuracy01,ResourceEfficiency01,ParMoves,ActualMoves,SkillIndex");
             foreach (var p in _paramEntries)
                 sb.Append("," + p.Key);
             sb.AppendLine();
@@ -1095,7 +1119,8 @@ namespace Cadence.Editor
                     sb.Append($"{snap.FlowState},{snap.RollingWinRate:F3},{snap.AdjustmentDelta:F4},");
                     sb.Append($"{snap.LevelsThisSession},{(snap.SessionFatigueActive ? 1 : 0)},");
                     sb.Append($"{(snap.WasAbandoned ? 1 : 0)},{snap.MeanInterMoveInterval:F3},");
-                    sb.Append($"{snap.InputAccuracy01:F3},{snap.ResourceEfficiency01:F3}");
+                    sb.Append($"{snap.InputAccuracy01:F3},{snap.ResourceEfficiency01:F3},");
+                    sb.Append($"{snap.ParMoves},{snap.ActualMoves},{snap.SkillIndex:F3}");
                     foreach (var p in _paramEntries)
                     {
                         float val = 0f;

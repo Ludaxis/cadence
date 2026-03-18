@@ -114,6 +114,26 @@ namespace Cadence
 #endif
         public float ProgressRate;
 
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 0 — Decision Quality")]
+        [PropertyTooltip("Skill index: par_moves / actual_moves (0-1 clamped).\n" +
+                          "Only valid when HasSkillIndex is true (par_moves was provided).")]
+        [ProgressBar(0f, 1f)]
+#endif
+        public float SkillIndex;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 0 — Decision Quality")]
+        [PropertyTooltip("True when par_moves was provided in level parameters and at least one move was made.")]
+#endif
+        public bool HasSkillIndex;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 0 — Decision Quality")]
+        [PropertyTooltip("The game-designer par move count for this level (from level parameters).")]
+#endif
+        public int ParMoves;
+
         // ───────────────────── Tier 1: Behavioral Tempo ─────────────────────
 
 #if ODIN_INSPECTOR
@@ -167,6 +187,24 @@ namespace Cadence
 #endif
         public float SequenceMatchRate;
 
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 2 — Strategic Pattern")]
+        [PropertyTooltip("Number of booster / power-up CTA taps (may not succeed).")]
+#endif
+        public int PowerUpAttempts;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 2 — Strategic Pattern")]
+        [PropertyTooltip("Total undo actions performed this session.")]
+#endif
+        public int UndoCount;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 2 — Strategic Pattern")]
+        [PropertyTooltip("Maximum consecutive undo streak in this session.")]
+#endif
+        public int PeakUndoStreak;
+
         // ───────────────────── Tier 3: Retry & Meta ─────────────────────
 
 #if ODIN_INSPECTOR
@@ -185,6 +223,42 @@ namespace Cadence
         [SuffixLabel("days", Overlay = true)]
 #endif
         public float SessionGapDays;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 3 — Retry & Meta")]
+        [PropertyTooltip("Number of frustration triggers (revive prompts) shown this session.")]
+#endif
+        public int FrustrationTriggerCount;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 3 — Retry & Meta")]
+        [PropertyTooltip("Number of revive CTA taps this session.")]
+#endif
+        public int ReviveAttemptCount;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 3 — Retry & Meta")]
+        [PropertyTooltip("Number of revives successfully completed this session.")]
+#endif
+        public int ReviveSuccessCount;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 3 — Retry & Meta")]
+        [PropertyTooltip("Highest streak milestone tier reached (1-3). 0 = no milestone.")]
+#endif
+        public int StreakMilestoneTier;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 3 — Retry & Meta")]
+        [PropertyTooltip("True when the player's streak was broken this session.")]
+#endif
+        public bool StreakWasReset;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 3 — Retry & Meta")]
+        [PropertyTooltip("True when play_type == replay. Replay sessions skip Glicko-2 updates.")]
+#endif
+        public bool IsReplay;
 
         // ───────────────────── Derived Scores ─────────────────────
 

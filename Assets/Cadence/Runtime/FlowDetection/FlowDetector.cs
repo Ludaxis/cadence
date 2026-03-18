@@ -183,6 +183,16 @@ namespace Cadence
                     if (entry.Value > 0f)
                         _engagementWindow.Push(1f);
                     break;
+
+                case SignalKeys.UndoStreak:
+                    if (entry.Value >= 2f)
+                        _engagementWindow.Push(0f);
+                    break;
+
+                case SignalKeys.FrustrationTrigger:
+                    _engagementWindow.Push(0f);
+                    _efficiencyWindow.Push(0f);
+                    break;
             }
         }
 

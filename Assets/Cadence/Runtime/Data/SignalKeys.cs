@@ -46,6 +46,10 @@ namespace Cadence
         /// <remarks>Feeds: SessionSummary.ResourceEfficiency01 -> EffectiveEfficiency01 -> SkillScore, Glicko-2, profiler trends.</remarks>
         public const string ResourceEfficiency = "resource.efficiency";
 
+        /// <summary>Skill index for the current move (game-computed). Value: 0-1.</summary>
+        /// <remarks>Optional override. When not provided, SkillIndex is computed as par_moves / actual_moves.</remarks>
+        public const string MoveSkillIndex = "move.skill_index";
+
         /// <summary>Micro-progress per action (e.g., cells filled / total). Value: 0-1.</summary>
         /// <remarks>Feeds: Flow Detector engagement window (pushes 1.0), ProgressRate aggregate.</remarks>
         public const string ProgressDelta = "progress.delta";
@@ -66,6 +70,10 @@ namespace Cadence
         /// <summary>Delay before first action within a move / turn. Value: seconds.</summary>
         /// <remarks>Anxiety indicator. Long hesitation = player unsure what to do.</remarks>
         public const string HesitationTime = "tempo.hesitation";
+
+        /// <summary>Delay before the player's first move in the session. Value: seconds.</summary>
+        /// <remarks>When recorded, overrides the timestamp-derived first-move delay.</remarks>
+        public const string FirstMoveDelay = "tempo.first_move";
 
         /// <summary>Player paused or went idle. Value: 1.0 per pause event.</summary>
         /// <remarks>
@@ -93,7 +101,20 @@ namespace Cadence
 
         /// <summary>A planned sequence / combo was correctly executed. Value: 1.0.</summary>
         /// <remarks>Feeds: SequenceMatchRate -> SkillScore (30% weight).</remarks>
+        // PRD alias: "strategy.sequence"
         public const string SequenceMatch = "strategy.sequence_match";
+
+        /// <summary>Player attempted to use a power-up / booster (CTA tap, may not succeed). Value: 1.0.</summary>
+        /// <remarks>Feeds: SessionSummary.PowerUpAttempts count.</remarks>
+        public const string PowerUpAttempt = "strategy.powerup_attempt";
+
+        /// <summary>Player performed an undo action. Value: 1.0.</summary>
+        /// <remarks>Feeds: SessionSummary.UndoCount, PeakUndoStreak. Resets on next forward move.</remarks>
+        public const string Undo = "strategy.undo";
+
+        /// <summary>Peak consecutive undo streak (game-reported). Value: streak count.</summary>
+        /// <remarks>Feeds: SessionSummary.PeakUndoStreak. Also triggers FlowDetector engagement drop when >= 2.</remarks>
+        public const string UndoStreak = "strategy.undo_streak";
 
         // ─────────────────────────────────────────────────────
         // Tier 3: Retry & Meta
@@ -114,6 +135,30 @@ namespace Cadence
         /// but the final outcome will be coerced to Abandoned when this signal was recorded.
         /// </remarks>
         public const string LevelAbandoned = "meta.abandoned";
+
+        /// <summary>A frustration trigger was shown (e.g. revive prompt). Value: 1.0.</summary>
+        /// <remarks>Feeds: SessionSummary.FrustrationTriggerCount. FlowDetector pushes 0 to both engagement and efficiency windows.</remarks>
+        public const string FrustrationTrigger = "meta.frustration_trigger";
+
+        /// <summary>Player tapped the revive CTA. Value: 1.0.</summary>
+        /// <remarks>Feeds: SessionSummary.ReviveAttemptCount.</remarks>
+        public const string ReviveAttempt = "meta.revive_attempt";
+
+        /// <summary>Revive completed successfully. Value: 1.0.</summary>
+        /// <remarks>Feeds: SessionSummary.ReviveSuccessCount.</remarks>
+        public const string ReviveSuccess = "meta.revive_success";
+
+        /// <summary>Player reached a streak milestone tier. Value: tier (1-3).</summary>
+        /// <remarks>Feeds: SessionSummary.StreakMilestoneTier (max).</remarks>
+        public const string StreakMilestone = "meta.streak_milestone";
+
+        /// <summary>Player's streak was reset / broken. Value: 1.0.</summary>
+        /// <remarks>Feeds: SessionSummary.StreakWasReset.</remarks>
+        public const string StreakReset = "meta.streak_reset";
+
+        /// <summary>Play type for this session. Value: 0=start, 1=restart, 2=replay.</summary>
+        /// <remarks>Replay sessions (value 2) skip Glicko-2 updates and return empty proposals.</remarks>
+        public const string PlayType = "meta.play_type";
 
         // ─────────────────────────────────────────────────────
         // Tier 4: Raw Input
@@ -141,5 +186,19 @@ namespace Cadence
 
         /// <summary>Session outcome. Value: 1.0 (win), 0.0 (lose), -1.0 (abandoned).</summary>
         public const string SessionOutcome = "session.outcome";
+
+        // ─────────────────────────────────────────────────────
+        // Play Type Values
+        // Used with the PlayType signal key.
+        // ─────────────────────────────────────────────────────
+
+        /// <summary>First attempt at this level.</summary>
+        public const float PlayTypeStart = 0f;
+
+        /// <summary>Restarting after a loss.</summary>
+        public const float PlayTypeRestart = 1f;
+
+        /// <summary>Replaying a previously completed level. Skips Glicko-2 updates.</summary>
+        public const float PlayTypeReplay = 2f;
     }
 }

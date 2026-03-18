@@ -62,6 +62,18 @@ namespace Cadence
             int inputAccuracyCount = 0;
             float resourceEfficiencySum = 0f;
             int resourceEfficiencyCount = 0;
+            int powerUpAttempts = 0;
+            int undoCount = 0;
+            int currentUndoStreak = 0;
+            int peakUndoStreak = 0;
+            int frustrationTriggerCount = 0;
+            int reviveAttempts = 0;
+            int reviveSuccesses = 0;
+            int streakMilestoneTier = 0;
+            bool streakReset = false;
+            bool isReplay = false;
+            float firstMoveDelayExplicit = -1f;
+            float skillIndexOverride = -1f;
 
             for (int i = 0; i < entries.Count; i++)
             {
@@ -72,6 +84,7 @@ namespace Cadence
                 {
                     case SignalKeys.MoveExecuted:
                         moveCount++;
+                        currentUndoStreak = 0;
                         float moveTime = e.Timestamp.SessionTime;
                         if (firstMoveTime < 0f) firstMoveTime = moveTime;
                         if (!useExplicitIntervals && lastMoveTime >= 0f)
@@ -147,6 +160,57 @@ namespace Cadence
                         outcomeValue = e.Value;
                         hasOutcome = true;
                         break;
+
+                    case SignalKeys.MoveSkillIndex:
+                        skillIndexOverride = Mathf.Clamp01(e.Value);
+                        break;
+
+                    case SignalKeys.FirstMoveDelay:
+                        firstMoveDelayExplicit = e.Value;
+                        break;
+
+                    case SignalKeys.PowerUpAttempt:
+                        powerUpAttempts++;
+                        break;
+
+                    case SignalKeys.Undo:
+                        undoCount++;
+                        currentUndoStreak++;
+                        if (currentUndoStreak > peakUndoStreak)
+                            peakUndoStreak = currentUndoStreak;
+                        break;
+
+                    case SignalKeys.UndoStreak:
+                        int reportedStreak = (int)e.Value;
+                        if (reportedStreak > peakUndoStreak)
+                            peakUndoStreak = reportedStreak;
+                        break;
+
+                    case SignalKeys.FrustrationTrigger:
+                        frustrationTriggerCount++;
+                        break;
+
+                    case SignalKeys.ReviveAttempt:
+                        reviveAttempts += (int)e.Value;
+                        break;
+
+                    case SignalKeys.ReviveSuccess:
+                        reviveSuccesses++;
+                        break;
+
+                    case SignalKeys.StreakMilestone:
+                        int tier = (int)e.Value;
+                        if (tier > streakMilestoneTier)
+                            streakMilestoneTier = tier;
+                        break;
+
+                    case SignalKeys.StreakReset:
+                        streakReset = true;
+                        break;
+
+                    case SignalKeys.PlayType:
+                        isReplay = Mathf.Approximately(e.Value, SignalKeys.PlayTypeReplay);
+                        break;
                 }
             }
 
@@ -188,7 +252,9 @@ namespace Cadence
             // Tier 1
             summary.MeanInterMoveInterval = intervalStats.Mean;
             summary.InterMoveVariance = intervalStats.Variance;
-            if (summary.HesitationTime <= 0f && firstMoveTime > 0f)
+            if (firstMoveDelayExplicit >= 0f)
+                summary.HesitationTime = firstMoveDelayExplicit;
+            else if (summary.HesitationTime <= 0f && firstMoveTime > 0f)
                 summary.HesitationTime = firstMoveTime;
             summary.PauseCount = pauseCount;
 
@@ -198,9 +264,39 @@ namespace Cadence
                 ? (float)sequenceMatches / sequenceCheckCount
                 : 0f;
 
+            // Tier 2 (continued)
+            summary.PowerUpAttempts = powerUpAttempts;
+            summary.UndoCount = undoCount;
+            summary.PeakUndoStreak = peakUndoStreak;
+
             // Tier 3
             summary.AttemptNumber = attemptNumber;
             summary.SessionGapDays = sessionGapDays;
+            summary.FrustrationTriggerCount = frustrationTriggerCount;
+            summary.ReviveAttemptCount = reviveAttempts;
+            summary.ReviveSuccessCount = reviveSuccesses;
+            summary.StreakMilestoneTier = streakMilestoneTier;
+            summary.StreakWasReset = streakReset;
+            summary.IsReplay = isReplay;
+
+            // par_moves and SkillIndex
+            float parMoves = 0f;
+            if (batch.LevelParameters != null)
+                batch.LevelParameters.TryGetValue("par_moves", out parMoves);
+
+            summary.ParMoves = (int)parMoves;
+            summary.HasSkillIndex = parMoves > 0f && moveCount > 0;
+            if (skillIndexOverride >= 0f)
+            {
+                summary.SkillIndex = skillIndexOverride;
+                summary.HasSkillIndex = true;
+            }
+            else
+            {
+                summary.SkillIndex = summary.HasSkillIndex
+                    ? Mathf.Clamp01(parMoves / moveCount)
+                    : 0f;
+            }
 
             // Derived scores
             summary.SkillScore = ComputeSkillScore(summary);

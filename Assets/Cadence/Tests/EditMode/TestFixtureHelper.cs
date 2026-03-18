@@ -130,5 +130,18 @@ namespace Cadence.Tests
                 if (d.RuleName == ruleName) sum += d.Delta;
             return sum;
         }
+
+        /// <summary>
+        /// Creates a SignalBatch with level parameters pre-set (e.g. par_moves).
+        /// </summary>
+        public static SignalBatch CreateBatchWithLevelParams(Dictionary<string, float> levelParams)
+        {
+            return new SignalBatch
+            {
+                LevelParameters = levelParams != null
+                    ? new Dictionary<string, float>(levelParams)
+                    : null
+            };
+        }
     }
 }

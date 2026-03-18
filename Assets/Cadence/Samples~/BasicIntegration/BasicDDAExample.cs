@@ -18,10 +18,12 @@ namespace Cadence.Samples
             _dda = new DDAService(_config);
         }
 
-        /// <summary>Call when a level begins.</summary>
+        /// <summary>Call when a level begins. Include par_moves in levelParams for skill index tracking.</summary>
         public void OnLevelStart(string levelId, Dictionary<string, float> levelParams,
             LevelType levelType = LevelType.Standard)
         {
+            // Example: levelParams = { "difficulty": 100, "move_limit": 30, "par_moves": 20 }
+            // par_moves is a recognized key that enables SkillIndex computation.
             _dda.BeginSession(levelId, levelParams, levelType);
         }
 
@@ -65,6 +67,11 @@ namespace Cadence.Samples
             {
                 Debug.Log($"  {delta.ParameterKey}: {delta.CurrentValue:F2} -> {delta.ProposedValue:F2} ({delta.RuleName})");
             }
+
+            // Log skill index if par_moves was provided
+            var debug = ((DDAService)_dda).GetDebugSnapshot();
+            if (debug.LastSessionSummary.HasSkillIndex)
+                Debug.Log($"Skill Index: {debug.LastSessionSummary.SkillIndex:F2} (par={debug.LastSessionSummary.ParMoves})");
         }
     }
 }

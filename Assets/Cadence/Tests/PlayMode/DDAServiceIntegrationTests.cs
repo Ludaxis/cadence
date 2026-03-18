@@ -291,6 +291,76 @@ namespace Cadence.Tests
             Assert.AreEqual(1, service.GetDebugSnapshot().LevelsThisSession);
         }
 
+        [Test]
+        public void ReplaySession_SkipsGlickoUpdate()
+        {
+            var levelParams = new Dictionary<string, float> { { "difficulty", 100f } };
+
+            // Normal session first
+            _service.BeginSession("level_1", levelParams);
+            _service.RecordSignal(SignalKeys.MoveExecuted, 1f, SignalTier.DecisionQuality, 0);
+            _service.RecordSignal(SignalKeys.MoveOptimal, 1f, SignalTier.DecisionQuality, 0);
+            _service.EndSession(SessionOutcome.Win);
+            Assert.AreEqual(1, _service.PlayerProfile.SessionsCompleted);
+
+            // Replay session
+            _service.BeginSession("level_1_replay", levelParams);
+            _service.RecordSignal(SignalKeys.PlayType, SignalKeys.PlayTypeReplay, SignalTier.RetryMeta);
+            _service.RecordSignal(SignalKeys.MoveExecuted, 1f, SignalTier.DecisionQuality, 0);
+            _service.RecordSignal(SignalKeys.MoveOptimal, 1f, SignalTier.DecisionQuality, 0);
+            _service.EndSession(SessionOutcome.Win);
+
+            Assert.AreEqual(1, _service.PlayerProfile.SessionsCompleted,
+                "Replay session should not increment SessionsCompleted");
+        }
+
+        [Test]
+        public void ReplaySession_ReturnsEmptyProposal()
+        {
+            var levelParams = new Dictionary<string, float> { { "difficulty", 100f } };
+
+            // Replay session
+            _service.BeginSession("level_replay", levelParams);
+            _service.RecordSignal(SignalKeys.PlayType, SignalKeys.PlayTypeReplay, SignalTier.RetryMeta);
+            _service.RecordSignal(SignalKeys.MoveExecuted, 1f, SignalTier.DecisionQuality, 0);
+            _service.EndSession(SessionOutcome.Win);
+
+            var proposal = _service.GetProposal(
+                new Dictionary<string, float> { { "difficulty", 100f } },
+                LevelType.Standard, 1);
+
+            Assert.IsNotNull(proposal);
+            Assert.IsTrue(proposal.Deltas == null || proposal.Deltas.Count == 0,
+                "Replay session should return empty proposal with no deltas");
+        }
+
+        [Test]
+        public void ParMoves_FlowsToSkillIndex()
+        {
+            var levelParams = new Dictionary<string, float>
+            {
+                { "difficulty", 100f },
+                { "par_moves", 20f }
+            };
+
+            _service.BeginSession("level_par", levelParams);
+
+            // Record exactly 20 moves (par)
+            for (int i = 0; i < 20; i++)
+            {
+                _service.RecordSignal(SignalKeys.MoveExecuted, 1f, SignalTier.DecisionQuality, i);
+                _service.RecordSignal(SignalKeys.MoveOptimal, 1f, SignalTier.DecisionQuality, i);
+            }
+
+            _service.EndSession(SessionOutcome.Win);
+
+            var debug = _service.GetDebugSnapshot();
+            Assert.AreEqual(20f, debug.ParMoves, 0.01f);
+            Assert.AreEqual(1.0f, debug.SkillIndex, 0.01f);
+            Assert.AreEqual(1.0f, debug.LastSessionSummary.SkillIndex, 0.01f);
+            Assert.IsTrue(debug.LastSessionSummary.HasSkillIndex);
+        }
+
         private static DDAService CreateServiceForFatigueTests()
         {
             var config = CreateBaseConfig();

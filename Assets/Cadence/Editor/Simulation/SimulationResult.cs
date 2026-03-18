@@ -20,6 +20,9 @@ namespace Cadence.Editor
         public float MeanInterMoveInterval;
         public float InputAccuracy01;
         public float ResourceEfficiency01;
+        public int ParMoves;
+        public int ActualMoves;
+        public float SkillIndex;
         public Dictionary<string, float> AdjustedParams;
         public float AdjustmentDelta;
     }

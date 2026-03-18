@@ -238,6 +238,105 @@ namespace Cadence.Tests
             Assert.AreEqual(SessionOutcome.Abandoned, summary.Outcome);
         }
 
+        [Test]
+        public void Analyze_WithParMoves_ComputesSkillIndex()
+        {
+            var batch = TestFixtureHelper.CreateBatchWithLevelParams(
+                new System.Collections.Generic.Dictionary<string, float> { { "par_moves", 20f } });
+            for (int i = 0; i < 20; i++)
+                AddSignal(batch, SignalKeys.MoveExecuted, 1f, i * 1f, i);
+
+            var summary = _analyzer.Analyze(batch);
+
+            Assert.IsTrue(summary.HasSkillIndex);
+            Assert.AreEqual(20, summary.ParMoves);
+            Assert.AreEqual(1.0f, summary.SkillIndex, 0.01f);
+        }
+
+        [Test]
+        public void Analyze_WithParMoves_MoreMoves_LowIndex()
+        {
+            var batch = TestFixtureHelper.CreateBatchWithLevelParams(
+                new System.Collections.Generic.Dictionary<string, float> { { "par_moves", 20f } });
+            for (int i = 0; i < 40; i++)
+                AddSignal(batch, SignalKeys.MoveExecuted, 1f, i * 1f, i);
+
+            var summary = _analyzer.Analyze(batch);
+
+            Assert.IsTrue(summary.HasSkillIndex);
+            Assert.AreEqual(0.5f, summary.SkillIndex, 0.01f);
+        }
+
+        [Test]
+        public void Analyze_WithoutParMoves_NoSkillIndex()
+        {
+            var batch = new SignalBatch();
+            for (int i = 0; i < 10; i++)
+                AddSignal(batch, SignalKeys.MoveExecuted, 1f, i * 1f, i);
+
+            var summary = _analyzer.Analyze(batch);
+
+            Assert.IsFalse(summary.HasSkillIndex);
+            Assert.AreEqual(0f, summary.SkillIndex, 0.01f);
+        }
+
+        [Test]
+        public void Analyze_CountsUndos_ResetOnForwardMove()
+        {
+            var batch = new SignalBatch();
+            // 3 undos in a row
+            AddSignal(batch, SignalKeys.Undo, 1f, 1f);
+            AddSignal(batch, SignalKeys.Undo, 1f, 2f);
+            AddSignal(batch, SignalKeys.Undo, 1f, 3f);
+            // Forward move resets streak
+            AddSignal(batch, SignalKeys.MoveExecuted, 1f, 4f, 0);
+            // 1 more undo
+            AddSignal(batch, SignalKeys.Undo, 1f, 5f);
+
+            var summary = _analyzer.Analyze(batch);
+
+            Assert.AreEqual(4, summary.UndoCount);
+            Assert.AreEqual(3, summary.PeakUndoStreak);
+        }
+
+        [Test]
+        public void Analyze_CountsFrustrationTriggers()
+        {
+            var batch = new SignalBatch();
+            AddSignal(batch, SignalKeys.MoveExecuted, 1f, 0f, 0);
+            AddSignal(batch, SignalKeys.FrustrationTrigger, 1f, 1f);
+            AddSignal(batch, SignalKeys.FrustrationTrigger, 1f, 2f);
+            AddSignal(batch, SignalKeys.FrustrationTrigger, 1f, 3f);
+
+            var summary = _analyzer.Analyze(batch);
+
+            Assert.AreEqual(3, summary.FrustrationTriggerCount);
+        }
+
+        [Test]
+        public void Analyze_DetectsReplayPlayType()
+        {
+            var batch = new SignalBatch();
+            AddSignal(batch, SignalKeys.PlayType, SignalKeys.PlayTypeReplay, 0f);
+            AddSignal(batch, SignalKeys.MoveExecuted, 1f, 1f, 0);
+
+            var summary = _analyzer.Analyze(batch);
+
+            Assert.IsTrue(summary.IsReplay);
+        }
+
+        [Test]
+        public void Analyze_StartPlayType_NotReplay()
+        {
+            var batch = new SignalBatch();
+            AddSignal(batch, SignalKeys.PlayType, SignalKeys.PlayTypeStart, 0f);
+            AddSignal(batch, SignalKeys.MoveExecuted, 1f, 1f, 0);
+
+            var summary = _analyzer.Analyze(batch);
+
+            Assert.IsFalse(summary.IsReplay);
+        }
+
         // --- Helpers ---
 
         private static SignalBatch CreateBatchWithMoves(int totalMoves, int optimalMoves)

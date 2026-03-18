@@ -230,6 +230,67 @@ namespace Cadence.Tests
                 derivedDetector.CurrentReading.TempoScore + 0.15f);
         }
 
+        [Test]
+        public void UndoStreak_ReducesEngagement()
+        {
+            var buffer = new SignalRingBuffer(64);
+
+            // Warm up with some good moves
+            AddMoveSignals(buffer, 10, optimal: true, intervalSeconds: 1f);
+            for (int i = 0; i < 5; i++)
+                _detector.Tick(0.016f, buffer);
+
+            float engagementBefore = _detector.CurrentReading.EngagementScore;
+
+            // Push undo streaks (value >= 2 triggers engagement drop)
+            for (int i = 0; i < 5; i++)
+            {
+                buffer.Push(new SignalEntry
+                {
+                    Key = SignalKeys.UndoStreak,
+                    Value = 3f,
+                    Timestamp = new SignalTimestamp { SessionTime = 15f + i }
+                });
+            }
+            for (int i = 0; i < 5; i++)
+                _detector.Tick(0.016f, buffer);
+
+            Assert.Less(_detector.CurrentReading.EngagementScore, engagementBefore,
+                "Engagement should drop after repeated undo streaks");
+        }
+
+        [Test]
+        public void FrustrationTrigger_HitsBothWindows()
+        {
+            var buffer = new SignalRingBuffer(64);
+
+            // Warm up
+            AddMoveSignals(buffer, 10, optimal: true, intervalSeconds: 1f);
+            for (int i = 0; i < 5; i++)
+                _detector.Tick(0.016f, buffer);
+
+            float engagementBefore = _detector.CurrentReading.EngagementScore;
+            float efficiencyBefore = _detector.CurrentReading.EfficiencyScore;
+
+            // Push frustration triggers
+            for (int i = 0; i < 5; i++)
+            {
+                buffer.Push(new SignalEntry
+                {
+                    Key = SignalKeys.FrustrationTrigger,
+                    Value = 1f,
+                    Timestamp = new SignalTimestamp { SessionTime = 15f + i }
+                });
+            }
+            for (int i = 0; i < 5; i++)
+                _detector.Tick(0.016f, buffer);
+
+            Assert.Less(_detector.CurrentReading.EngagementScore, engagementBefore,
+                "Engagement should drop after frustration triggers");
+            Assert.Less(_detector.CurrentReading.EfficiencyScore, efficiencyBefore,
+                "Efficiency should drop after frustration triggers");
+        }
+
         // --- Helpers ---
 
         private static void AddMoveSignals(SignalRingBuffer buffer, int count,
