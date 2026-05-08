@@ -97,6 +97,37 @@ namespace Cadence.Tests
         }
 
         [Test]
+        public void GetProposal_DoesNotRecordCooldownUntilProposalApplied()
+        {
+            var config = CreateBaseConfig();
+            config.AdjustmentEngineConfig.GlobalCooldownSeconds = 60f;
+            config.AdjustmentEngineConfig.PerParameterCooldownSeconds = 60f;
+            var service = new DDAService(config);
+            var levelParams = new Dictionary<string, float> { { "difficulty", 100f } };
+
+            for (int session = 0; session < 6; session++)
+            {
+                service.BeginSession($"loss_{session}", levelParams, LevelType.Standard);
+                service.RecordSignal(SignalKeys.MoveExecuted, 1f, SignalTier.DecisionQuality, 0);
+                service.RecordSignal(SignalKeys.MoveOptimal, 0f, SignalTier.DecisionQuality, 0);
+                service.EndSession(SessionOutcome.Lose);
+            }
+
+            var first = service.GetProposal(levelParams, LevelType.Standard, 6);
+            var second = service.GetProposal(levelParams, LevelType.Standard, 6);
+
+            Assert.Greater(first.Deltas.Count, 0);
+            Assert.Greater(second.Deltas.Count, 0,
+                "GetProposal should be evaluation-only and must not consume cooldown.");
+
+            service.RecordProposalApplied(first);
+
+            var third = service.GetProposal(levelParams, LevelType.Standard, 6);
+            Assert.AreEqual(0, third.Deltas.Count);
+            Assert.AreEqual(AdjustmentRuleAttribution.CooldownBlocked, third.RuleFired);
+        }
+
+        [Test]
         public void DebugSnapshot_ContainsAllData()
         {
             var @params = new Dictionary<string, float> { { "difficulty", 100f } };
@@ -210,7 +241,7 @@ namespace Cadence.Tests
                 8);
 
             Assert.IsNotNull(proposal);
-            Assert.AreEqual(31.5f, GetProposedValue(proposal, "time_limit"), 0.01f);
+            Assert.AreEqual(30.6f, GetProposedValue(proposal, "time_limit"), 0.01f);
         }
 
         [Test]

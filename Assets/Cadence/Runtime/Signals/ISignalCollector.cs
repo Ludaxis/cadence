@@ -17,7 +17,9 @@ namespace Cadence
         /// <param name="value">Signal value; meaning varies by key.</param>
         /// <param name="tier">Priority tier for processing order.</param>
         /// <param name="moveIndex">Sequential move index (1-based), or -1 if not move-related.</param>
-        void Record(string key, float value, SignalTier tier, int moveIndex = -1);
+        /// <param name="confidence">Confidence in the value, from 0 to 1. Defaults to 1 for legacy callers.</param>
+        void Record(string key, float value, SignalTier tier, int moveIndex = -1,
+            float confidence = 1f);
 
         /// <summary>
         /// Returns the signal batch for the current session, containing all recorded entries.

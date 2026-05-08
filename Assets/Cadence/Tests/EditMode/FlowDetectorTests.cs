@@ -49,6 +49,40 @@ namespace Cadence.Tests
         }
 
         [Test]
+        public void MissingMoveOptimal_AfterWarmup_RemainsUnknownWithZeroConfidence()
+        {
+            var buffer = new SignalRingBuffer(64);
+
+            float time = 0f;
+            for (int i = 0; i < 8; i++)
+            {
+                time += 1f;
+                buffer.Push(new SignalEntry
+                {
+                    Key = SignalKeys.MoveExecuted,
+                    Value = 1f,
+                    Tier = SignalTier.DecisionQuality,
+                    MoveIndex = i,
+                    Timestamp = new SignalTimestamp { SessionTime = time }
+                });
+                buffer.Push(new SignalEntry
+                {
+                    Key = SignalKeys.ProgressDelta,
+                    Value = 0.05f,
+                    Tier = SignalTier.DecisionQuality,
+                    MoveIndex = i,
+                    Timestamp = new SignalTimestamp { SessionTime = time }
+                });
+            }
+
+            for (int i = 0; i < 5; i++)
+                _detector.Tick(0.016f, buffer);
+
+            Assert.AreEqual(FlowState.Unknown, _detector.CurrentReading.State);
+            Assert.AreEqual(0f, _detector.CurrentReading.Confidence);
+        }
+
+        [Test]
         public void HighEfficiency_SteadyTempo_DetectsBoredom()
         {
             var buffer = new SignalRingBuffer(64);

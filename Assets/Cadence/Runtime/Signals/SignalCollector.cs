@@ -22,7 +22,7 @@ namespace Cadence
 
         public SignalCollector(int ringBufferCapacity = 512)
         {
-            _ringBuffer = new SignalRingBuffer(ringBufferCapacity);
+            _ringBuffer = new SignalRingBuffer(Mathf.Max(1, ringBufferCapacity));
         }
 
         public void Reset(string levelId, float sessionStartTime)
@@ -34,12 +34,15 @@ namespace Cadence
             _sessionStartTime = sessionStartTime;
         }
 
-        public void Record(string key, float value, SignalTier tier, int moveIndex = -1)
+        public void Record(string key, float value, SignalTier tier, int moveIndex = -1,
+            float confidence = 1f)
         {
             var entry = new SignalEntry
             {
                 Key = key,
                 Value = value,
+                Confidence = Mathf.Clamp01(confidence),
+                HasConfidence = true,
                 Tier = tier,
                 MoveIndex = moveIndex,
                 Timestamp = new SignalTimestamp

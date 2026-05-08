@@ -134,6 +134,8 @@ namespace Cadence
 #if UNITY_EDITOR
         private void OnValidate()
         {
+            RingBufferCapacity = Mathf.Max(1, RingBufferCapacity);
+            MaxStoredSessions = Mathf.Max(1, MaxStoredSessions);
             OnConfigChanged?.Invoke();
         }
 #endif

@@ -10,6 +10,8 @@ namespace Cadence
         // Confidence calculation
         private const float ConfidenceBase = 0.5f;
         private const float ConfidenceIncrement = 0.1f;
+        private const float MissingTempoConfidenceScale = 0.65f;
+        private const float MissingEngagementConfidenceScale = 0.8f;
 
         // Frustration score weights
         private const float FrustrationEfficiencyWeight = 0.5f;
@@ -93,23 +95,28 @@ namespace Cadence
             _lastProcessedSignalCount = totalPushed;
 
             // Update scores with EMA smoothing
-            float alpha = _config != null ? _config.ExponentialAlpha : 0.3f;
-            float rawTempo = _tempoWindow.ConsistencyScore();
-            float rawEfficiency = _efficiencyWindow.Count > 0 ? _efficiencyWindow.Mean : 0.5f;
-            float rawEngagement = ComputeEngagement(recentSignals);
+            bool hasTempoData = _tempoWindow.Count > 0;
+            bool hasEfficiencyData = _efficiencyWindow.Count > 0;
+            bool hasEngagementData = _engagementWindow.Count > 0;
+
+            float alpha = _config != null ? Mathf.Clamp(_config.ExponentialAlpha, 0.01f, 1f) : 0.3f;
+            float rawTempo = hasTempoData ? _tempoWindow.ConsistencyScore() : 0.5f;
+            float rawEfficiency = hasEfficiencyData ? _efficiencyWindow.Mean : 0.5f;
+            float rawEngagement = hasEngagementData ? ComputeEngagement(recentSignals) : 0.5f;
 
             _smoothedTempo = Mathf.Lerp(_smoothedTempo, rawTempo, alpha);
             _smoothedEfficiency = Mathf.Lerp(_smoothedEfficiency, rawEfficiency, alpha);
             _smoothedEngagement = Mathf.Lerp(_smoothedEngagement, rawEngagement, alpha);
 
             // Classify
-            int warmup = _config != null ? _config.WarmupMoves : 5;
+            int warmup = Mathf.Max(1, _config != null ? _config.WarmupMoves : 5);
             FlowState classified = _movesSeen < warmup
                 ? FlowState.Unknown
-                : Classify(_smoothedTempo, _smoothedEfficiency, _smoothedEngagement);
+                : Classify(_smoothedTempo, _smoothedEfficiency, _smoothedEngagement,
+                    hasTempoData, hasEfficiencyData, hasEngagementData);
 
             // Hysteresis
-            int hysteresis = _config != null ? _config.HysteresisCount : 3;
+            int hysteresis = Mathf.Max(1, _config != null ? _config.HysteresisCount : 3);
             if (classified == _candidateState)
             {
                 _candidateCount++;
@@ -130,6 +137,8 @@ namespace Cadence
             float confidence = _movesSeen < warmup
                 ? Mathf.Clamp01((float)_movesSeen / warmup * ConfidenceBase)
                 : Mathf.Clamp01(ConfidenceBase + _candidateCount * ConfidenceIncrement);
+            confidence *= SignalAvailabilityConfidenceScale(hasTempoData, hasEfficiencyData,
+                hasEngagementData);
 
             _currentReading.Confidence = confidence;
             _currentReading.TempoScore = _smoothedTempo;
@@ -171,7 +180,7 @@ namespace Cadence
                     break;
 
                 case SignalKeys.MoveOptimal:
-                    _efficiencyWindow.Push(entry.Value);
+                    _efficiencyWindow.Push(ApplySignalConfidence(entry));
                     break;
 
                 case SignalKeys.PauseTriggered:
@@ -196,31 +205,64 @@ namespace Cadence
             }
         }
 
+        private static float ApplySignalConfidence(SignalEntry entry)
+        {
+            float confidence = entry.HasConfidence ? entry.Confidence : 1f;
+            return Mathf.Lerp(0.5f, Mathf.Clamp01(entry.Value), Mathf.Clamp01(confidence));
+        }
+
         private float ComputeEngagement(SignalRingBuffer recentSignals)
         {
             if (_engagementWindow.Count == 0) return 0.5f;
             return _engagementWindow.Mean;
         }
 
-        private FlowState Classify(float tempo, float efficiency, float engagement)
+        private static float SignalAvailabilityConfidenceScale(bool hasTempoData,
+            bool hasEfficiencyData,
+            bool hasEngagementData)
         {
+            if (!hasEfficiencyData)
+                return 0f;
+
+            float scale = 1f;
+            if (!hasTempoData)
+                scale *= MissingTempoConfidenceScale;
+            if (!hasEngagementData)
+                scale *= MissingEngagementConfidenceScale;
+            return scale;
+        }
+
+        private FlowState Classify(float tempo, float efficiency, float engagement,
+            bool hasTempoData,
+            bool hasEfficiencyData,
+            bool hasEngagementData)
+        {
+            if (!hasEfficiencyData)
+                return FlowState.Unknown;
+
             float boredomEff = _config != null ? _config.BoredomEfficiencyMin : 0.85f;
             float boredomTempo = _config != null ? _config.BoredomTempoMin : 0.7f;
             float anxietyEff = _config != null ? _config.AnxietyEfficiencyMax : 0.3f;
             float anxietyTempo = _config != null ? _config.AnxietyTempoMax : 0.2f;
             float frustrationThreshold = _config != null ? _config.FrustrationThreshold : 0.7f;
 
-            // Compute frustration signal from low efficiency + erratic tempo
-            float frustrationScore = (1f - efficiency) * FrustrationEfficiencyWeight
-                + (1f - tempo) * FrustrationTempoWeight
-                + (1f - engagement) * FrustrationEngagementWeight;
-            if (frustrationScore > frustrationThreshold)
-                return FlowState.Frustration;
+            if (hasEngagementData)
+            {
+                float frustrationScore = (1f - efficiency) * FrustrationEfficiencyWeight
+                    + (hasTempoData ? (1f - tempo) * FrustrationTempoWeight : 0f)
+                    + (1f - engagement) * FrustrationEngagementWeight;
+                float frustrationWeight = FrustrationEfficiencyWeight
+                    + (hasTempoData ? FrustrationTempoWeight : 0f)
+                    + FrustrationEngagementWeight;
+                frustrationScore /= frustrationWeight;
+                if (frustrationScore > frustrationThreshold)
+                    return FlowState.Frustration;
+            }
 
-            if (efficiency > boredomEff && tempo > boredomTempo)
+            if (hasTempoData && efficiency > boredomEff && tempo > boredomTempo)
                 return FlowState.Boredom;
 
-            if (efficiency < anxietyEff && tempo < anxietyTempo)
+            if (hasTempoData && efficiency < anxietyEff && tempo < anxietyTempo)
                 return FlowState.Anxiety;
 
             return FlowState.Flow;

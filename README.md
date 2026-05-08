@@ -141,14 +141,15 @@ Important current behavior:
 | `RecordSignal(MoveOptimal, 1 or 0, ...)` | Yes | Current flow detection expects a value for every move, not just good moves. |
 | `Tick(deltaTime)` | Yes for live flow | `CadenceManager` does this automatically. |
 | `EndSession(outcome)` | Yes | Produces the session summary and updates the player model. |
-| `GetProposal(nextLevelParams, nextLevelType, nextLevelIndex)` | Recommended | Use the explicit overload for mixed level types or sawtooth scheduling. |
+| `GetProposal(nextLevelParams, nextLevelType, nextLevelIndex)` | Recommended | Evaluation-only. Use the explicit overload for mixed level types or sawtooth scheduling. |
+| `RecordProposalApplied(proposal)` | Yes when applied | Call only after the host actually applies a non-empty proposal so cooldowns reflect real changes. |
 
 ### Signals Consumed by the Current Runtime
 
 | Signal | Used By | Effect |
 |---|---|---|
 | `move.executed` | Flow detector, session analyzer | Move count and fallback timing when no explicit `tempo.interval` is present. |
-| `move.optimal` | Flow detector, session analyzer | Real-time efficiency window and session move efficiency. |
+| `move.optimal` | Flow detector, session analyzer | Real-time efficiency window and session move efficiency. Should be recorded for every valid move when quality is available; if missing, flow stays Unknown or low-confidence instead of defaulting to Flow. |
 | `move.waste` | Session analyzer | Waste ratio and frustration score. |
 | `resource.efficiency` | Session analyzer, player model, profiler | Enriches `EffectiveEfficiency01`, skill scoring, Glicko updates, and profiler trends. |
 | `progress.delta` | Flow detector, session analyzer | Engagement signal and session progress rate. |
@@ -175,10 +176,14 @@ These keys still exist in `SignalKeys`, but only `strategy.stored` remains outsi
 | Output | Type | What You Get |
 |---|---|---|
 | Current flow | `FlowReading` | `State`, `Confidence`, `TempoScore`, `EfficiencyScore`, `EngagementScore`, `SessionTime` |
-| Next-level proposal | `AdjustmentProposal` | `Deltas`, `Confidence`, `Reason`, `DetectedState`, `Timing` |
+| Next-level proposal | `AdjustmentProposal` | `Deltas`, `Confidence`, `RuleFired`, `Reason`, `DetectedState`, `Timing` |
 | Player profile | `PlayerSkillProfile` | Rating, deviation, volatility, averages, recent history |
 | Archetype reading | `PlayerArchetypeReading` | Primary and secondary archetype scores |
 | Debug snapshot | `DDADebugData` | Combined runtime state for tools and debugging |
+
+`AdjustmentProposal.RuleFired` is the stable analytics attribution field. Built-in values are
+`flow_channel`, `streak_damper`, `frustration_relief`, `new_player`,
+`session_fatigue`, `cooldown_blocked`, `gate_blocked`, and `none`.
 
 ## Current Rule Set
 

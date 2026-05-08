@@ -42,6 +42,7 @@ namespace Cadence.Tests
             context.TimeSinceLastAdjustment = 1001f; // Only 1 second later
             var second = engine.Evaluate(context);
             Assert.AreEqual(0, second.Deltas.Count, "Second proposal should be blocked by cooldown");
+            Assert.AreEqual(AdjustmentRuleAttribution.CooldownBlocked, second.RuleFired);
         }
 
         [Test]

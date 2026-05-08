@@ -49,7 +49,7 @@ namespace Cadence
         {
             _config = config;
 
-            int ringCapacity = config != null ? config.RingBufferCapacity : 512;
+            int ringCapacity = Mathf.Max(1, config != null ? config.RingBufferCapacity : 512);
             _collector = new SignalCollector(ringCapacity);
             _analyzer = new SessionAnalyzer();
             _playerModel = new GlickoPlayerModel(config != null ? config.PlayerModelConfig : null);
@@ -148,14 +148,15 @@ namespace Cadence
         }
 
         public void RecordSignal(string key, float value = 1f,
-            SignalTier tier = SignalTier.DecisionQuality, int moveIndex = -1)
+            SignalTier tier = SignalTier.DecisionQuality, int moveIndex = -1,
+            float confidence = 1f)
         {
             if (!_sessionActive) return;
 
             if (key == SignalKeys.LevelAbandoned)
                 _explicitAbandonRequested = true;
 
-            _collector.Record(key, value, tier, moveIndex);
+            _collector.Record(key, value, tier, moveIndex, confidence);
         }
 
         public void Tick(float deltaTime)
@@ -178,13 +179,19 @@ namespace Cadence
                 return null;
 
             if (_lastSessionSummary.IsReplay)
-                return new AdjustmentProposal { Timing = AdjustmentTiming.BeforeNextLevel };
+            {
+                _lastProposal = new AdjustmentProposal { Timing = AdjustmentTiming.BeforeNextLevel };
+                return _lastProposal;
+            }
 
             var typeConfig = ResolveLevelTypeConfig(nextLevelType);
 
             // Tutorial levels skip DDA entirely
             if (!typeConfig.DDAEnabled)
-                return new AdjustmentProposal { Timing = AdjustmentTiming.BeforeNextLevel };
+            {
+                _lastProposal = new AdjustmentProposal { Timing = AdjustmentTiming.BeforeNextLevel };
+                return _lastProposal;
+            }
 
             float sawtoothMult = 1f;
             if (_scheduler != null && nextLevelIndex >= 0)
@@ -216,10 +223,15 @@ namespace Cadence
 
             _lastProposal = _adjustmentEngine.Evaluate(context);
 
-            if (_lastProposal != null && _lastProposal.Deltas.Count > 0)
-                _adjustmentEngine.RecordAdjustment(_lastProposal, timeNow);
-
             return _lastProposal;
+        }
+
+        public void RecordProposalApplied(AdjustmentProposal proposal)
+        {
+            if (proposal == null || proposal.Deltas == null || proposal.Deltas.Count == 0)
+                return;
+
+            _adjustmentEngine.RecordAdjustment(proposal, Time.unscaledTime);
         }
 
         public float GetTargetMultiplier(int levelIndex)

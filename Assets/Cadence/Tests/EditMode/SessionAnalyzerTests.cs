@@ -43,6 +43,20 @@ namespace Cadence.Tests
         }
 
         [Test]
+        public void Analyze_MoveOptimalConfidence_BlendsTowardNeutral()
+        {
+            var batch = new SignalBatch();
+            AddSignal(batch, SignalKeys.MoveExecuted, 1f, 0f, 0);
+            AddSignal(batch, SignalKeys.MoveOptimal, 1f, 0f, 0, 1f);
+            AddSignal(batch, SignalKeys.MoveExecuted, 1f, 1f, 1);
+            AddSignal(batch, SignalKeys.MoveOptimal, 0f, 1f, 1, 0f);
+
+            var summary = _analyzer.Analyze(batch);
+
+            Assert.AreEqual(0.75f, summary.MoveEfficiency, 0.01f);
+        }
+
+        [Test]
         public void Analyze_CalculatesWasteRatio()
         {
             var batch = new SignalBatch();
@@ -352,12 +366,14 @@ namespace Cadence.Tests
         }
 
         private static void AddSignal(SignalBatch batch, string key, float value,
-            float sessionTime, int moveIndex = -1)
+            float sessionTime, int moveIndex = -1, float? confidence = null)
         {
             batch.Add(new SignalEntry
             {
                 Key = key,
                 Value = value,
+                Confidence = confidence ?? 1f,
+                HasConfidence = confidence.HasValue,
                 Tier = SignalTier.DecisionQuality,
                 MoveIndex = moveIndex,
                 Timestamp = new SignalTimestamp { SessionTime = sessionTime, FrameNumber = 0 }

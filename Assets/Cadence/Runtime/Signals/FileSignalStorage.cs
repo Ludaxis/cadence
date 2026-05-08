@@ -33,11 +33,7 @@ namespace Cadence
                 string fileName = $"{safeLevelId}_{timestamp}.json";
                 string filePath = Path.Combine(_basePath, fileName);
                 string json = SignalLogSerializer.Serialize(batch);
-                System.Threading.ThreadPool.QueueUserWorkItem(_ =>
-                {
-                    try { File.WriteAllText(filePath, json); }
-                    catch (Exception ex) { UnityEngine.Debug.LogWarning($"[Cadence] Async signal save failed: {ex.Message}"); }
-                });
+                File.WriteAllText(filePath, json);
             }
             catch (Exception ex)
             {
@@ -101,11 +97,7 @@ namespace Cadence
                     while (files.Count > maxSessionsPerLevel)
                     {
                         string toDelete = files[0];
-                        System.Threading.ThreadPool.QueueUserWorkItem(_ =>
-                        {
-                            try { File.Delete(toDelete); }
-                            catch (Exception ex) { UnityEngine.Debug.LogWarning($"[Cadence] Async signal prune failed: {ex.Message}"); }
-                        });
+                        File.Delete(toDelete);
                         files.RemoveAt(0);
                     }
                 }

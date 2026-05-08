@@ -1027,6 +1027,8 @@ namespace Cadence.Editor
                 }
                 else
                 {
+                    service.RecordSignal(SignalKeys.MoveOptimal, 0f,
+                        SignalTier.DecisionQuality, m + 1);
                     service.RecordSignal(SignalKeys.MoveWaste, 1f,
                         SignalTier.DecisionQuality, m + 1);
                 }

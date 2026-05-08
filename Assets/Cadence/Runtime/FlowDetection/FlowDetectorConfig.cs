@@ -188,8 +188,12 @@ namespace Cadence
                 BoredomEfficiencyMin = AnxietyEfficiencyMax + 0.1f;
             if (BoredomTempoMin <= AnxietyTempoMax)
                 BoredomTempoMin = AnxietyTempoMax + 0.1f;
+            TempoWindowSize = Mathf.Max(1, TempoWindowSize);
+            EfficiencyWindowSize = Mathf.Max(1, EfficiencyWindowSize);
+            EngagementWindowSize = Mathf.Max(1, EngagementWindowSize);
             HysteresisCount = Mathf.Max(1, HysteresisCount);
             WarmupMoves = Mathf.Max(1, WarmupMoves);
+            ExponentialAlpha = Mathf.Clamp(ExponentialAlpha, 0.01f, 1f);
         }
 #endif
     }

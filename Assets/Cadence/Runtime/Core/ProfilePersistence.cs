@@ -25,6 +25,7 @@ namespace Cadence
         public static void Save(string key, string json)
         {
             PlayerPrefs.SetString(key, json);
+            PlayerPrefs.Save();
         }
 
         /// <summary>
@@ -34,6 +35,7 @@ namespace Cadence
         public static void Delete(string key)
         {
             PlayerPrefs.DeleteKey(key);
+            PlayerPrefs.Save();
         }
 
         /// <summary>

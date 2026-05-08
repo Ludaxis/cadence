@@ -41,7 +41,7 @@ namespace Cadence
 
             // Accumulators
             int moveCount = 0;
-            int optimalMoves = 0;
+            float optimalMoveScore = 0f;
             float totalWaste = 0f;
             float totalProgress = 0f;
             int sequenceMatches = 0;
@@ -94,7 +94,7 @@ namespace Cadence
                         break;
 
                     case SignalKeys.MoveOptimal:
-                        if (e.Value > 0.5f) optimalMoves++;
+                        optimalMoveScore += ApplySignalConfidence(e);
                         break;
 
                     case SignalKeys.MoveWaste:
@@ -232,7 +232,7 @@ namespace Cadence
 
             // Tier 0
             summary.MoveEfficiency = moveCount > 0
-                ? Mathf.Clamp01((float)optimalMoves / moveCount)
+                ? Mathf.Clamp01(optimalMoveScore / moveCount)
                 : 0f;
             summary.HasInputAccuracy = inputAccuracyCount > 0;
             summary.InputAccuracy01 = summary.HasInputAccuracy
@@ -320,6 +320,12 @@ namespace Cadence
 
             float sequence = s.SequenceMatchRate;
             return Mathf.Clamp01(efficiency * SkillEfficiencyWeight + sequence * SkillSequenceWeight);
+        }
+
+        private static float ApplySignalConfidence(SignalEntry entry)
+        {
+            float confidence = entry.HasConfidence ? entry.Confidence : 1f;
+            return Mathf.Lerp(0.5f, Mathf.Clamp01(entry.Value), Mathf.Clamp01(confidence));
         }
 
         private static float ComputeEngagementScore(SessionSummary s)

@@ -33,6 +33,7 @@ namespace Cadence.Tests
             // FlowChannelRule not applicable (no sufficient data)
             // StreakDamperRule not applicable (no history)
             Assert.IsNotNull(proposal);
+            Assert.AreEqual(AdjustmentRuleAttribution.NewPlayer, proposal.RuleFired);
         }
 
         [Test]
@@ -41,13 +42,14 @@ namespace Cadence.Tests
             var context = TestFixtureHelper.CreateContext(
                 sessionsCompleted: 10,
                 averageOutcome: 0.15f, // Below 0.3 target
-                recentHistory: TestFixtureHelper.CreateHistory(10, winRate: 0.15f)
+                recentHistory: CreateNoStreakHistory()
             );
 
             var proposal = _engine.Evaluate(context);
 
             Assert.IsNotNull(proposal);
             Assert.Greater(proposal.Deltas.Count, 0);
+            Assert.AreEqual(AdjustmentRuleAttribution.FlowChannel, proposal.RuleFired);
             foreach (var delta in proposal.Deltas)
             {
                 if (delta.RuleName == "FlowChannel")
@@ -61,13 +63,14 @@ namespace Cadence.Tests
             var context = TestFixtureHelper.CreateContext(
                 sessionsCompleted: 10,
                 averageOutcome: 0.85f, // Above 0.7 target
-                recentHistory: TestFixtureHelper.CreateHistory(10, winRate: 0.85f)
+                recentHistory: CreateNoStreakHistory()
             );
 
             var proposal = _engine.Evaluate(context);
 
             Assert.IsNotNull(proposal);
             Assert.Greater(proposal.Deltas.Count, 0);
+            Assert.AreEqual(AdjustmentRuleAttribution.FlowChannel, proposal.RuleFired);
             foreach (var delta in proposal.Deltas)
             {
                 if (delta.RuleName == "FlowChannel")
@@ -91,6 +94,26 @@ namespace Cadence.Tests
                 if (d.RuleName == "FlowChannel") flowChannelDeltas++;
 
             Assert.AreEqual(0, flowChannelDeltas);
+        }
+
+        [Test]
+        public void Evaluate_EarlySessionNoOtherRule_UsesGateBlockedAttribution()
+        {
+            var context = TestFixtureHelper.CreateContext(
+                sessionsCompleted: 3,
+                averageOutcome: 0.6f,
+                recentHistory: CreateNoStreakHistory()
+            );
+            context.LastSession = new SessionSummary
+            {
+                FrustrationScore = 0f,
+                Outcome = SessionOutcome.Win
+            };
+
+            var proposal = _engine.Evaluate(context);
+
+            Assert.AreEqual(0, proposal.Deltas.Count);
+            Assert.AreEqual(AdjustmentRuleAttribution.GateBlocked, proposal.RuleFired);
         }
 
         [Test]
@@ -119,6 +142,7 @@ namespace Cadence.Tests
                 }
             }
             Assert.IsTrue(hasStreakDamper);
+            Assert.AreEqual(AdjustmentRuleAttribution.StreakDamper, proposal.RuleFired);
         }
 
         [Test]
@@ -147,6 +171,7 @@ namespace Cadence.Tests
                 }
             }
             Assert.IsTrue(hasStreakDamper);
+            Assert.AreEqual(AdjustmentRuleAttribution.StreakDamper, proposal.RuleFired);
         }
 
         [Test]
@@ -155,7 +180,7 @@ namespace Cadence.Tests
             var context = TestFixtureHelper.CreateContext(
                 sessionsCompleted: 5,
                 averageOutcome: 0.5f,
-                recentHistory: TestFixtureHelper.CreateHistory(5, winRate: 0.5f)
+                recentHistory: CreateNoStreakHistory()
             );
             context.LastSession = new SessionSummary
             {
@@ -175,6 +200,35 @@ namespace Cadence.Tests
                 }
             }
             Assert.IsTrue(hasRelief);
+            Assert.AreEqual(AdjustmentRuleAttribution.FrustrationRelief, proposal.RuleFired);
+        }
+
+        [Test]
+        public void Evaluate_NoRulesFire_UsesNoneAttribution()
+        {
+            var context = TestFixtureHelper.CreateContext(
+                sessionsCompleted: 10,
+                averageOutcome: 0.5f,
+                recentHistory: new List<SessionHistoryEntry>
+                {
+                    new SessionHistoryEntry { Outcome = 1f },
+                    new SessionHistoryEntry { Outcome = 0f },
+                    new SessionHistoryEntry { Outcome = 1f },
+                    new SessionHistoryEntry { Outcome = 0f },
+                    new SessionHistoryEntry { Outcome = 1f },
+                    new SessionHistoryEntry { Outcome = 0f }
+                }
+            );
+            context.LastSession = new SessionSummary
+            {
+                FrustrationScore = 0f,
+                Outcome = SessionOutcome.Win
+            };
+
+            var proposal = _engine.Evaluate(context);
+
+            Assert.AreEqual(0, proposal.Deltas.Count);
+            Assert.AreEqual(AdjustmentRuleAttribution.None, proposal.RuleFired);
         }
 
         [Test]
@@ -226,7 +280,7 @@ namespace Cadence.Tests
             var context = TestFixtureHelper.CreateContext(
                 sessionsCompleted: 10,
                 averageOutcome: 0.5f,
-                recentHistory: TestFixtureHelper.CreateHistory(10, winRate: 0.5f)
+                recentHistory: CreateNoStreakHistory()
             );
             context.LastFlowReading = new FlowReading { State = FlowState.Frustration };
             context.LastSession = new SessionSummary
@@ -286,6 +340,19 @@ namespace Cadence.Tests
 
             Assert.AreEqual(0, flowChannelDeltas,
                 "Anxiety flow state should not cause FlowChannel to activate when win rate is in band");
+        }
+
+        private static List<SessionHistoryEntry> CreateNoStreakHistory()
+        {
+            return new List<SessionHistoryEntry>
+            {
+                new SessionHistoryEntry { Outcome = 1f, Efficiency = 0.5f },
+                new SessionHistoryEntry { Outcome = 0f, Efficiency = 0.5f },
+                new SessionHistoryEntry { Outcome = 1f, Efficiency = 0.5f },
+                new SessionHistoryEntry { Outcome = 0f, Efficiency = 0.5f },
+                new SessionHistoryEntry { Outcome = 1f, Efficiency = 0.5f },
+                new SessionHistoryEntry { Outcome = 0f, Efficiency = 0.5f }
+            };
         }
 
     }

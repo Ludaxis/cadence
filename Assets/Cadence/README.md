@@ -33,6 +33,12 @@ var proposal = CadenceManager.Service.GetProposal(
     nextLevelParams,
     nextLevelType,
     nextLevelIndex);
+
+if (proposal != null && proposal.Deltas.Count > 0)
+{
+    // Apply the proposal in the host game, then record that it was actually used.
+    CadenceManager.Service.RecordProposalApplied(proposal);
+}
 ```
 
 ## Actual Runtime Contract
@@ -40,9 +46,10 @@ var proposal = CadenceManager.Service.GetProposal(
 Required:
 - `BeginSession(...)`
 - `MoveExecuted`
-- `MoveOptimal` with `1` for good moves and `0` for bad moves
+- `MoveOptimal` with `1` for good moves and `0` for bad moves when move quality is available
 - `Tick(...)` each frame unless you use `CadenceManager`
 - `EndSession(...)`
+- `RecordProposalApplied(...)` after applying a non-empty proposal
 
 Consumed now:
 - `move.executed`
@@ -67,6 +74,7 @@ Declared but not consumed now:
 ## Main Limitations
 
 - Default built-in rules now include `SessionFatigueRule`, which gently eases long contiguous play sessions. Treat that as part of the baseline behavior, not an optional add-on.
+- Missing `move.optimal` data keeps flow state Unknown or low-confidence; Cadence will not treat absent move quality as confident Flow.
 - Scalar parameter polarity is supported, but Cadence still does not understand blockers, board topology, or other authored puzzle semantics.
 - `IDDAService` now supports `RegisterRule(...)`, `RegisterRuleProvider(...)`, and `RegisterLevelTypeConfigProvider(...)`, but there is still no polished plugin/discovery surface for external SDK consumers.
 - Use the explicit `GetProposal(nextLevelParams, nextLevelType, nextLevelIndex)` overload. It is now the only supported proposal path.
@@ -83,6 +91,10 @@ Declared but not consumed now:
 | Adjustment | Produces `AdjustmentProposal` deltas through built-in rules |
 | Scheduling | Applies sawtooth multiplier when a level index is provided |
 | Profiling | Classifies player archetypes from recent history |
+
+`AdjustmentProposal.RuleFired` is the stable attribution field for analytics:
+`flow_channel`, `streak_damper`, `frustration_relief`, `new_player`,
+`session_fatigue`, `cooldown_blocked`, `gate_blocked`, or `none`.
 
 ## Editor Tools
 

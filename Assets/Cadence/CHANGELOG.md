@@ -3,6 +3,21 @@
 All notable changes to the Cadence DDA SDK are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.0] - 2026-05-08
+
+### Added
+- Proposal application API via `RecordProposalApplied`, so cooldowns are recorded only after the host actually applies a proposal.
+- Stable `AdjustmentProposal.RuleFired` attribution values for analytics, including early-session `gate_blocked`.
+- Signal confidence support on `RecordSignal` and persisted signal entries.
+
+### Fixed
+- Signal replay now round-trips level parameters and confidence.
+- Profile persistence flushes PlayerPrefs on save and delete.
+- File signal storage writes synchronously to avoid losing pause/quit session data.
+- Editor simulation tools emit `move.optimal = 0` for non-optimal moves.
+- Runtime config validation clamps invalid ring buffer and flow window sizes.
+- Flow detection no longer falls through to confident `Flow` when `move.optimal` data is missing.
+
 ## [1.2.1] - 2026-03-03
 
 ### Improved

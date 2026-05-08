@@ -26,6 +26,14 @@ namespace Cadence
         public float Value;
 
 #if ODIN_INSPECTOR
+        [PropertyTooltip("Confidence in this signal value. 1 = fully trusted. Lower values are blended toward neutral by consumers that support confidence.")]
+        [PropertyRange(0f, 1f)]
+#endif
+        public float Confidence;
+
+        public bool HasConfidence;
+
+#if ODIN_INSPECTOR
         [PropertyTooltip("Priority tier of this signal. Tier 0 = critical, Tier 5 = enrichment.")]
 #endif
         public SignalTier Tier;

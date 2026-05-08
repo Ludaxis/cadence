@@ -28,6 +28,11 @@ namespace Cadence
         public float Confidence;
 
 #if ODIN_INSPECTOR
+        [PropertyTooltip("Stable normalized attribution for the rule that drove this proposal.")]
+#endif
+        public string RuleFired = AdjustmentRuleAttribution.None;
+
+#if ODIN_INSPECTOR
         [PropertyTooltip("Human-readable explanation of why this proposal was generated.\n" +
                           "Includes flow state, streak info, and frustration scores.")]
 #endif
@@ -56,5 +61,50 @@ namespace Cadence
 
         /// <summary>Apply immediately during the current session (emergency frustration relief).</summary>
         MidSession = 1
+    }
+
+    /// <summary>
+    /// Stable analytics attribution names for proposal decisions.
+    /// </summary>
+    public static class AdjustmentRuleAttribution
+    {
+        public const string FlowChannel = "flow_channel";
+        public const string StreakDamper = "streak_damper";
+        public const string FrustrationRelief = "frustration_relief";
+        public const string NewPlayer = "new_player";
+        public const string SessionFatigue = "session_fatigue";
+        public const string CooldownBlocked = "cooldown_blocked";
+        public const string GateBlocked = "gate_blocked";
+        public const string None = "none";
+
+        public static string Normalize(string ruleName)
+        {
+            switch (ruleName)
+            {
+                case "FlowChannel":
+                case FlowChannel:
+                    return FlowChannel;
+                case "StreakDamper":
+                case StreakDamper:
+                    return StreakDamper;
+                case "FrustrationRelief":
+                case FrustrationRelief:
+                    return FrustrationRelief;
+                case "NewPlayer":
+                case NewPlayer:
+                    return NewPlayer;
+                case "SessionFatigue":
+                case SessionFatigue:
+                    return SessionFatigue;
+                case "Cooldown":
+                case CooldownBlocked:
+                    return CooldownBlocked;
+                case "GateBlocked":
+                case GateBlocked:
+                    return GateBlocked;
+                default:
+                    return None;
+            }
+        }
     }
 }

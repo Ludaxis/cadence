@@ -62,8 +62,11 @@ namespace Cadence
             var proposal = new AdjustmentProposal
             {
                 Timing = AdjustmentTiming.BeforeNextLevel,
-                DetectedState = context.LastFlowReading.State
+                DetectedState = context.LastFlowReading.State,
+                RuleFired = AdjustmentRuleAttribution.None
             };
+
+            bool cooldownBlockedAllDeltas = false;
 
             // Let each rule add deltas
             for (int i = 0; i < _rules.Count; i++)
@@ -72,7 +75,10 @@ namespace Cadence
                 if (rule == null) continue;
                 if (rule.IsApplicable(context))
                 {
+                    int beforeCount = proposal.Deltas.Count;
                     rule.Evaluate(context, proposal);
+                    if (rule is Rules.CooldownRule && beforeCount > 0 && proposal.Deltas.Count == 0)
+                        cooldownBlockedAllDeltas = true;
                 }
             }
 
@@ -93,6 +99,7 @@ namespace Cadence
             proposal.Confidence = context.Profile != null
                 ? context.Profile.Confidence01
                 : 0f;
+            proposal.RuleFired = ResolveRuleFired(context, proposal, cooldownBlockedAllDeltas);
 
             // Build reason string
             if (proposal.Deltas.Count > 0)
@@ -110,6 +117,9 @@ namespace Cadence
         /// </summary>
         public void RecordAdjustment(AdjustmentProposal proposal, float currentTime)
         {
+            if (proposal == null || proposal.Deltas == null || proposal.Deltas.Count == 0)
+                return;
+
             for (int i = 0; i < _rules.Count; i++)
             {
                 if (_rules[i] is Rules.CooldownRule cooldown)
@@ -118,6 +128,50 @@ namespace Cadence
                     break;
                 }
             }
+        }
+
+        private static string ResolveRuleFired(AdjustmentContext context,
+            AdjustmentProposal proposal,
+            bool cooldownBlockedAllDeltas)
+        {
+            if (proposal == null || proposal.Deltas == null || proposal.Deltas.Count == 0)
+            {
+                if (cooldownBlockedAllDeltas)
+                    return AdjustmentRuleAttribution.CooldownBlocked;
+
+                if (IsFlowChannelGateBlocked(context))
+                    return AdjustmentRuleAttribution.GateBlocked;
+
+                return AdjustmentRuleAttribution.None;
+            }
+
+            int bestIndex = 0;
+            float bestMagnitude = Mathf.Abs(proposal.Deltas[0].Delta);
+            for (int i = 1; i < proposal.Deltas.Count; i++)
+            {
+                float magnitude = Mathf.Abs(proposal.Deltas[i].Delta);
+                if (magnitude > bestMagnitude)
+                {
+                    bestIndex = i;
+                    bestMagnitude = magnitude;
+                }
+            }
+
+            return AdjustmentRuleAttribution.Normalize(proposal.Deltas[bestIndex].RuleName);
+        }
+
+        private static bool IsFlowChannelGateBlocked(AdjustmentContext context)
+        {
+            if (context == null || context.Profile == null)
+                return false;
+
+            if (context.Profile.HasSufficientData)
+                return false;
+
+            if (context.LevelTypeConfig != null && !context.LevelTypeConfig.DDAEnabled)
+                return false;
+
+            return true;
         }
 
         private static void ApplySawtoothScaling(AdjustmentProposal proposal, float multiplier)

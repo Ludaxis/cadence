@@ -41,6 +41,7 @@ namespace Cadence
         /// <param name="capacity">Maximum number of values to retain.</param>
         public FlowWindow(int capacity)
         {
+            if (capacity <= 0) capacity = 1;
             Capacity = capacity;
             _values = new float[capacity];
         }

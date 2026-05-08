@@ -202,6 +202,8 @@ namespace Cadence
 
                 if (_verboseLogging)
                     Debug.Log("[Cadence] Player profile reset.");
+
+                OnServiceInitialized?.Invoke(_service);
             }
         }
     }

@@ -32,7 +32,8 @@ namespace Cadence
 
 #if ODIN_INSPECTOR
         [PropertyTooltip("Which adjustment rule generated this delta.\n" +
-                          "Possible values: \"FlowChannel\", \"StreakDamper\", \"FrustrationRelief\".")]
+                          "Built-in values include \"FlowChannel\", \"StreakDamper\", \"FrustrationRelief\", " +
+                          "\"NewPlayer\", and \"SessionFatigue\".")]
 #endif
         public string RuleName;
 

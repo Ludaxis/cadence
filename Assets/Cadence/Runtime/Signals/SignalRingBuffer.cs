@@ -26,11 +26,10 @@ namespace Cadence
         /// <summary>
         /// Creates a new ring buffer with the specified capacity.
         /// </summary>
-        /// <param name="capacity">Maximum entries to retain. Must be greater than zero.</param>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown if capacity is zero or negative.</exception>
+        /// <param name="capacity">Maximum entries to retain. Invalid values are clamped to one.</param>
         public SignalRingBuffer(int capacity)
         {
-            if (capacity <= 0) throw new ArgumentOutOfRangeException(nameof(capacity));
+            if (capacity <= 0) capacity = 1;
             Capacity = capacity;
             _buffer = new SignalEntry[capacity];
         }

@@ -1,8 +1,8 @@
 {
     "name": "com.ludaxis.cadence",
-    "version": "1.2.1",
+    "version": "1.3.0",
     "displayName": "Cadence - Dynamic Difficulty Adjustment",
-    "description": "Game-agnostic DDA SDK for Unity. Signal-based player modeling, real-time flow detection, Glicko-2 skill tracking, and adaptive difficulty proposals.",
+    "description": "Internal scalar-puzzle DDA SDK for Unity. Signal-based player modeling, real-time flow detection, Glicko-2 skill tracking, and adaptive difficulty proposals.",
     "unity": "2021.3",
     "license": "MIT",
     "author": {

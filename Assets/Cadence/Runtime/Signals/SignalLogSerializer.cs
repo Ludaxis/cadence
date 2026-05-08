@@ -16,6 +16,7 @@ namespace Cadence
             public string LevelId;
             public float SessionStartTime;
             public List<SerializedEntry> Entries = new List<SerializedEntry>();
+            public List<SerializedParameter> LevelParameters = new List<SerializedParameter>();
         }
 
         [Serializable]
@@ -27,6 +28,15 @@ namespace Cadence
             public int M;      // MoveIndex
             public float ST;   // SessionTime
             public int F;      // FrameNumber
+            public float C;     // Confidence
+            public int HC;      // HasConfidence, for old-log compatibility
+        }
+
+        [Serializable]
+        private struct SerializedParameter
+        {
+            public string K;
+            public float V;
         }
 
         public static string Serialize(SignalBatch batch)
@@ -49,8 +59,22 @@ namespace Cadence
                     T = (int)e.Tier,
                     M = e.MoveIndex,
                     ST = e.Timestamp.SessionTime,
-                    F = e.Timestamp.FrameNumber
+                    F = e.Timestamp.FrameNumber,
+                    C = e.HasConfidence ? Mathf.Clamp01(e.Confidence) : 1f,
+                    HC = e.HasConfidence ? 1 : 0
                 });
+            }
+
+            if (batch.LevelParameters != null)
+            {
+                foreach (var kvp in batch.LevelParameters)
+                {
+                    sb.LevelParameters.Add(new SerializedParameter
+                    {
+                        K = kvp.Key,
+                        V = kvp.Value
+                    });
+                }
             }
 
             return JsonUtility.ToJson(sb);
@@ -61,11 +85,16 @@ namespace Cadence
             if (string.IsNullOrEmpty(json)) return new SignalBatch();
 
             var sb = JsonUtility.FromJson<SerializedBatch>(json);
+            if (sb == null) return new SignalBatch();
             var batch = new SignalBatch
             {
                 LevelId = sb.LevelId,
-                SessionStartTime = sb.SessionStartTime
+                SessionStartTime = sb.SessionStartTime,
+                LevelParameters = DeserializeParameters(sb.LevelParameters)
             };
+
+            if (sb.Entries == null)
+                return batch;
 
             for (int i = 0; i < sb.Entries.Count; i++)
             {
@@ -74,6 +103,8 @@ namespace Cadence
                 {
                     Key = se.K,
                     Value = se.V,
+                    Confidence = se.HC == 0 ? 1f : Mathf.Clamp01(se.C),
+                    HasConfidence = se.HC != 0,
                     Tier = (SignalTier)se.T,
                     MoveIndex = se.M,
                     Timestamp = new SignalTimestamp
@@ -85,6 +116,23 @@ namespace Cadence
             }
 
             return batch;
+        }
+
+        private static Dictionary<string, float> DeserializeParameters(
+            List<SerializedParameter> parameters)
+        {
+            if (parameters == null || parameters.Count == 0)
+                return null;
+
+            var result = new Dictionary<string, float>(parameters.Count);
+            for (int i = 0; i < parameters.Count; i++)
+            {
+                var parameter = parameters[i];
+                if (!string.IsNullOrEmpty(parameter.K))
+                    result[parameter.K] = parameter.V;
+            }
+
+            return result;
         }
     }
 }
