@@ -183,7 +183,7 @@ namespace Cadence.Tests
         }
 
         [Test]
-        public void BeginSessionWhileActive_AutoEnds()
+        public void BeginSessionWhileActive_AutoEndsNoMoveSessionWithoutProfileUpdate()
         {
             var @params = new Dictionary<string, float> { { "difficulty", 100f } };
             _service.BeginSession("level_1", @params);
@@ -192,7 +192,8 @@ namespace Cadence.Tests
             _service.BeginSession("level_2", @params);
 
             Assert.IsTrue(_service.IsSessionActive);
-            Assert.AreEqual(1, _service.PlayerProfile.SessionsCompleted);
+            Assert.AreEqual(0, _service.PlayerProfile.SessionsCompleted);
+            Assert.IsTrue(_service.GetDebugSnapshot().LastSessionSummary.IgnoredForDDA);
         }
 
         [Test]
@@ -217,6 +218,48 @@ namespace Cadence.Tests
 
             var snapshot = _service.GetDebugSnapshot();
             Assert.AreEqual(SessionOutcome.Abandoned, snapshot.LastSessionSummary.Outcome);
+        }
+
+        [Test]
+        public void AbandonedWithoutMoves_SkipsProfileHistoryAndProposal()
+        {
+            var levelParams = new Dictionary<string, float> { { "difficulty", 100f } };
+            _service.BeginSession("quit_before_move", levelParams, LevelType.Standard);
+
+            _service.EndSession(SessionOutcome.Abandoned);
+
+            var snapshot = _service.GetDebugSnapshot();
+            Assert.IsTrue(snapshot.LastSessionSummary.IgnoredForDDA);
+            Assert.AreEqual(0, snapshot.LastSessionSummary.TotalMoves);
+            Assert.AreEqual(0, _service.PlayerProfile.SessionsCompleted);
+            Assert.AreEqual(0, _service.PlayerProfile.RecentHistory.Count);
+
+            var proposal = _service.GetProposal(
+                new Dictionary<string, float> { { "difficulty", 100f } },
+                LevelType.Standard,
+                1);
+
+            Assert.IsNotNull(proposal);
+            Assert.AreEqual(0, proposal.Deltas.Count,
+                "No-gameplay abandoned sessions should not produce next-level adjustments.");
+            Assert.AreEqual(AdjustmentRuleAttribution.None, proposal.RuleFired);
+        }
+
+        [Test]
+        public void AbandonedWithMoves_StillUpdatesPlayableSessionHistory()
+        {
+            var levelParams = new Dictionary<string, float> { { "difficulty", 100f } };
+            _service.BeginSession("quit_after_move", levelParams, LevelType.Standard);
+            _service.RecordSignal(SignalKeys.MoveExecuted, 1f, SignalTier.DecisionQuality, 0);
+            _service.RecordSignal(SignalKeys.LevelAbandoned, 1f, SignalTier.RetryMeta);
+
+            _service.EndSession(SessionOutcome.Win);
+
+            var snapshot = _service.GetDebugSnapshot();
+            Assert.AreEqual(SessionOutcome.Abandoned, snapshot.LastSessionSummary.Outcome);
+            Assert.IsFalse(snapshot.LastSessionSummary.IgnoredForDDA);
+            Assert.AreEqual(1, _service.PlayerProfile.SessionsCompleted);
+            Assert.AreEqual(1, _service.PlayerProfile.RecentHistory.Count);
         }
 
         [Test]

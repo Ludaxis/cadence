@@ -19,6 +19,7 @@ namespace Cadence.Rules
         public bool IsApplicable(AdjustmentContext context)
         {
             if (context.Profile == null) return false;
+            if (_config != null && !_config.EnableNewPlayerRule) return false;
             return context.Profile.SessionsCompleted < NewPlayerSessionCap;
         }
 

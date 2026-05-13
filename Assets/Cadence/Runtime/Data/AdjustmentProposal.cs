@@ -13,6 +13,9 @@ namespace Cadence
     [Serializable]
     public class AdjustmentProposal
     {
+        public const float DefaultLowConfidenceStepCapThreshold = 0.4f;
+        public const int DefaultLowConfidenceMaxAbsVariantStep = 1;
+
 #if ODIN_INSPECTOR
         [PropertyTooltip("List of parameter changes proposed by the adjustment rules.\n" +
                           "Each delta specifies the parameter key, current value, proposed value, and which rule generated it.")]
@@ -49,6 +52,30 @@ namespace Cadence
                           "MidSession = apply immediately (frustration relief).")]
 #endif
         public AdjustmentTiming Timing;
+
+        /// <summary>
+        /// Applies the SDK's low-confidence variant-step cap to a host-game variant step.
+        /// Use this at the final mapping point where a generic proposal is converted into a variant delta.
+        /// </summary>
+        public int CapVariantStepForConfidence(int proposalStep)
+        {
+            return CapVariantStepForConfidence(proposalStep, Confidence);
+        }
+
+        /// <summary>
+        /// Caps variant steps to a small magnitude while the player profile is still low confidence.
+        /// This keeps noisy early-session data from causing large difficulty jumps.
+        /// </summary>
+        public static int CapVariantStepForConfidence(int proposalStep, float confidence,
+            float confidenceThreshold = DefaultLowConfidenceStepCapThreshold,
+            int maxAbsStep = DefaultLowConfidenceMaxAbsVariantStep)
+        {
+            if (!float.IsNaN(confidence) && confidence >= confidenceThreshold)
+                return proposalStep;
+
+            int absCap = Math.Max(0, maxAbsStep);
+            return Math.Max(-absCap, Math.Min(absCap, proposalStep));
+        }
     }
 
     /// <summary>

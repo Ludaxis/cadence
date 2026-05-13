@@ -32,6 +32,20 @@ namespace Cadence.Tests
         }
 
         [Test]
+        public void IsApplicable_DisabledInConfig_ReturnsFalse()
+        {
+            var config = ScriptableObject.CreateInstance<AdjustmentEngineConfig>();
+            config.EnableNewPlayerRule = false;
+            var rule = new Cadence.Rules.NewPlayerRule(config);
+            var context = new AdjustmentContext
+            {
+                Profile = new PlayerSkillProfile { SessionsCompleted = 2 }
+            };
+
+            Assert.IsFalse(rule.IsApplicable(context));
+        }
+
+        [Test]
         public void Evaluate_NewLosingPlayer_EasesDifficulty()
         {
             var rule = new Cadence.Rules.NewPlayerRule(null);

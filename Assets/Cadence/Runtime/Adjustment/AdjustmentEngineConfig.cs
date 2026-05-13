@@ -25,6 +25,8 @@ namespace Cadence
         public const float DefaultSessionFatigueEasePerLevel = 0.02f;
         public const float DefaultSessionFatigueMaxEase = 0.10f;
         public const float DefaultSessionFatigueResetGapMinutes = 15f;
+        public const float DefaultLowConfidenceStepCapThreshold = 0.4f;
+        public const int DefaultLowConfidenceMaxAbsVariantStep = 1;
 
         // ───────────────────── Flow Channel ─────────────────────
 
@@ -185,6 +187,20 @@ namespace Cadence
 #endif
         [Range(0f, 1f)] public float FrustrationReliefThreshold = 0.7f;
 
+        // ───────────────────── New Player ─────────────────────
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("New Player Rule")]
+        [InfoBox("Optional onboarding protection for early sessions. Disable for games that want only the PRD product rules enabled.")]
+        [LabelText("Enable New Player")]
+        [ToggleLeft]
+#else
+        [Space(10)]
+        [Header("New Player Rule — optional onboarding protection")]
+        [Tooltip("Enable the built-in new-player easing rule for the first sessions.")]
+#endif
+        public bool EnableNewPlayerRule = true;
+
         // ───────────────────── Session Fatigue ─────────────────────
 
 #if ODIN_INSPECTOR
@@ -297,6 +313,38 @@ namespace Cadence
 #endif
         [Range(0f, 0.5f)] public float MaxDeltaPerAdjustment = 0.15f;
 
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Safety Clamping")]
+        [LabelText("Enable Low-Confidence Step Cap")]
+        [PropertyTooltip("When enabled, host games should cap final variant-step output while profile confidence is low.")]
+        [ToggleLeft]
+#else
+        [Tooltip("Enable the low-confidence helper cap for final host-game variant-step mapping.")]
+#endif
+        public bool EnableLowConfidenceStepCap = true;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Safety Clamping")]
+        [LabelText("Low-Confidence Threshold")]
+        [PropertyTooltip("When proposal/profile confidence is below this value, final variant-step output should be capped.")]
+        [PropertyRange(0f, 1f)]
+#else
+        [Tooltip("Confidence threshold below which final variant-step output should be capped.")]
+#endif
+        [Range(0f, 1f)] public float LowConfidenceStepCapThreshold =
+            DefaultLowConfidenceStepCapThreshold;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Safety Clamping")]
+        [LabelText("Low-Confidence Max Step")]
+        [PropertyTooltip("Maximum absolute variant-step output while confidence is below the threshold.")]
+        [PropertyRange(0, 10)]
+#else
+        [Tooltip("Maximum absolute final variant-step output while confidence is below the threshold.")]
+#endif
+        [Range(0, 10)] public int LowConfidenceMaxAbsVariantStep =
+            DefaultLowConfidenceMaxAbsVariantStep;
+
 #if UNITY_EDITOR
         private void OnValidate()
         {
@@ -309,6 +357,8 @@ namespace Cadence
             SessionFatigueEasePerLevel = Mathf.Clamp(SessionFatigueEasePerLevel, 0f, 0.2f);
             SessionFatigueMaxEase = Mathf.Clamp(SessionFatigueMaxEase, 0f, 0.3f);
             SessionFatigueResetGapMinutes = Mathf.Max(0f, SessionFatigueResetGapMinutes);
+            LowConfidenceStepCapThreshold = Mathf.Clamp01(LowConfidenceStepCapThreshold);
+            LowConfidenceMaxAbsVariantStep = Mathf.Max(0, LowConfidenceMaxAbsVariantStep);
         }
 #endif
     }

@@ -127,9 +127,10 @@ namespace Cadence
             _lastSessionSummary = _analyzer.Analyze(_collector.CurrentBatch);
             _lastSessionSummary.Outcome = outcome;
             _lastSessionSummary.LevelType = _currentLevelType;
+            _lastSessionSummary.IgnoredForDDA = ShouldIgnoreSessionForDDA(_lastSessionSummary);
 
-            // Update player model (skip for replay sessions)
-            if (!_lastSessionSummary.IsReplay)
+            // Update player model (skip for replay and no-gameplay abandon sessions)
+            if (!_lastSessionSummary.IsReplay && !_lastSessionSummary.IgnoredForDDA)
                 _playerModel.UpdateFromSession(_lastSessionSummary);
 
             // Persist signals if storage is available
@@ -140,9 +141,12 @@ namespace Cadence
                 _storage.Prune(maxSessions);
             }
 
-            if (!_lastSessionSummary.IsReplay)
+            if (!_lastSessionSummary.IsReplay && !_lastSessionSummary.IgnoredForDDA)
+            {
                 _levelsCompletedInCurrentPlaySession++;
-            _lastCompletedLevelEndTime = Time.unscaledTime;
+            }
+            if (!_lastSessionSummary.IgnoredForDDA)
+                _lastCompletedLevelEndTime = Time.unscaledTime;
             _explicitAbandonRequested = false;
             _sessionActive = false;
         }
@@ -181,6 +185,19 @@ namespace Cadence
             if (_lastSessionSummary.IsReplay)
             {
                 _lastProposal = new AdjustmentProposal { Timing = AdjustmentTiming.BeforeNextLevel };
+                return _lastProposal;
+            }
+
+            if (_lastSessionSummary.IgnoredForDDA)
+            {
+                _lastProposal = new AdjustmentProposal
+                {
+                    Timing = AdjustmentTiming.BeforeNextLevel,
+                    Confidence = _playerModel.Profile != null ? _playerModel.Profile.Confidence01 : 0f,
+                    DetectedState = _flowDetector.CurrentReading.State,
+                    RuleFired = AdjustmentRuleAttribution.None,
+                    Reason = "Ignored no-gameplay abandoned session"
+                };
                 return _lastProposal;
             }
 
@@ -226,12 +243,40 @@ namespace Cadence
             return _lastProposal;
         }
 
+        public int CapVariantStepForConfidence(int proposalStep, AdjustmentProposal proposal = null)
+        {
+            var adjustmentConfig = _config != null ? _config.AdjustmentEngineConfig : null;
+            if (adjustmentConfig != null && !adjustmentConfig.EnableLowConfidenceStepCap)
+                return proposalStep;
+
+            float confidence = proposal != null
+                ? proposal.Confidence
+                : (_playerModel.Profile != null ? _playerModel.Profile.Confidence01 : 0f);
+            float threshold = adjustmentConfig != null
+                ? adjustmentConfig.LowConfidenceStepCapThreshold
+                : AdjustmentEngineConfig.DefaultLowConfidenceStepCapThreshold;
+            int maxAbsStep = adjustmentConfig != null
+                ? adjustmentConfig.LowConfidenceMaxAbsVariantStep
+                : AdjustmentEngineConfig.DefaultLowConfidenceMaxAbsVariantStep;
+
+            return AdjustmentProposal.CapVariantStepForConfidence(
+                proposalStep,
+                confidence,
+                threshold,
+                maxAbsStep);
+        }
+
         public void RecordProposalApplied(AdjustmentProposal proposal)
+        {
+            RecordProposalApplied(proposal, null);
+        }
+
+        public void RecordProposalApplied(AdjustmentProposal proposal, float? simulatedTime)
         {
             if (proposal == null || proposal.Deltas == null || proposal.Deltas.Count == 0)
                 return;
 
-            _adjustmentEngine.RecordAdjustment(proposal, Time.unscaledTime);
+            _adjustmentEngine.RecordAdjustment(proposal, simulatedTime ?? Time.unscaledTime);
         }
 
         public float GetTargetMultiplier(int levelIndex)
@@ -341,6 +386,11 @@ namespace Cadence
         {
             var adjustmentConfig = _config != null ? _config.AdjustmentEngineConfig : null;
             return adjustmentConfig == null || adjustmentConfig.EnableSessionFatigueRule;
+        }
+
+        private static bool ShouldIgnoreSessionForDDA(SessionSummary summary)
+        {
+            return summary.Outcome == SessionOutcome.Abandoned && summary.TotalMoves <= 0;
         }
 
         private LevelTypeConfig ResolveLevelTypeConfig(LevelType type)

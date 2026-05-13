@@ -260,6 +260,13 @@ namespace Cadence
 #endif
         public bool IsReplay;
 
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Tier 3 — Retry & Meta")]
+        [PropertyTooltip("True when this session should be excluded from player model/history and proposal evaluation.\n" +
+                          "Used for abandoned sessions where the player made zero moves.")]
+#endif
+        public bool IgnoredForDDA;
+
         // ───────────────────── Derived Scores ─────────────────────
 
 #if ODIN_INSPECTOR

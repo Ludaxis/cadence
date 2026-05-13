@@ -84,6 +84,15 @@ namespace Cadence
             LevelType nextLevelType, int nextLevelIndex = -1);
 
         /// <summary>
+        /// Applies the SDK low-confidence safety cap to a host-game variant step.
+        /// Call this after converting an <see cref="AdjustmentProposal"/> into a variant step.
+        /// </summary>
+        /// <param name="proposalStep">The host-computed variant step before safety capping.</param>
+        /// <param name="proposal">Proposal that produced the step, or null to use the current player profile confidence.</param>
+        /// <returns>The capped or original variant step.</returns>
+        int CapVariantStepForConfidence(int proposalStep, AdjustmentProposal proposal = null);
+
+        /// <summary>
         /// Records that the host actually applied a proposal. This is the only call that updates
         /// adjustment cooldowns; <see cref="GetProposal"/> is evaluation-only.
         /// </summary>
