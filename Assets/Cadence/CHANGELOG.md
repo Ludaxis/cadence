@@ -3,6 +3,14 @@
 All notable changes to the Cadence DDA SDK are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.1] - 2026-05-15
+
+### Added
+- Low-confidence variant-step cap helper via `IDDAService.CapVariantStepForConfidence(...)`.
+
+### Fixed
+- Abandoned sessions with zero executed moves are ignored for DDA player history and next-level proposal output.
+
 ## [1.3.0] - 2026-05-08
 
 ### Added
@@ -15,6 +23,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/).
 - Profile persistence flushes PlayerPrefs on save and delete.
 - File signal storage writes synchronously to avoid losing pause/quit session data.
 - Editor simulation tools emit `move.optimal = 0` for non-optimal moves.
+- Samples and editor simulation tools now call `RecordProposalApplied` after they actually apply proposal deltas.
+- Scenario simulations record applied proposals against simulated time so cooldown behavior matches the simulated session clock.
 - Runtime config validation clamps invalid ring buffer and flow window sizes.
 - Flow detection no longer falls through to confident `Flow` when `move.optimal` data is missing.
 
