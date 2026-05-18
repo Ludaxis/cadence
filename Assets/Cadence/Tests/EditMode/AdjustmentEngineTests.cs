@@ -306,6 +306,54 @@ namespace Cadence.Tests
         }
 
         [Test]
+        public void Evaluate_FrustrationFlowState_DoesNotTriggerRelief_WhenMidSessionDisabled()
+        {
+            _config.AllowFrustrationReliefMidSession = false;
+            var context = TestFixtureHelper.CreateContext(
+                sessionsCompleted: 10,
+                averageOutcome: 0.5f,
+                recentHistory: CreateNoStreakHistory()
+            );
+            context.LastFlowReading = new FlowReading { State = FlowState.Frustration };
+            context.LastSession = new SessionSummary
+            {
+                FrustrationScore = 0.2f,
+                Outcome = SessionOutcome.Lose
+            };
+
+            var proposal = _engine.Evaluate(context);
+
+            Assert.IsFalse(ContainsRule(proposal, "FrustrationRelief"),
+                "FlowState.Frustration should not trigger relief when mid-session relief is disabled");
+            Assert.AreEqual(AdjustmentTiming.BeforeNextLevel, proposal.Timing,
+                "Disabled mid-session relief must not force MidSession timing");
+        }
+
+        [Test]
+        public void Evaluate_FrustrationScoreStillTriggersRelief_WhenMidSessionDisabled()
+        {
+            _config.AllowFrustrationReliefMidSession = false;
+            var context = TestFixtureHelper.CreateContext(
+                sessionsCompleted: 10,
+                averageOutcome: 0.5f,
+                recentHistory: CreateNoStreakHistory()
+            );
+            context.LastFlowReading = new FlowReading { State = FlowState.Frustration };
+            context.LastSession = new SessionSummary
+            {
+                FrustrationScore = 0.9f,
+                Outcome = SessionOutcome.Lose
+            };
+
+            var proposal = _engine.Evaluate(context);
+
+            Assert.IsTrue(ContainsRule(proposal, "FrustrationRelief"),
+                "FrustrationScore should still trigger between-session relief");
+            Assert.AreEqual(AdjustmentTiming.BeforeNextLevel, proposal.Timing,
+                "Score-triggered relief should stay between-session when mid-session relief is disabled");
+        }
+
+        [Test]
         public void Evaluate_BoredomFlowState_DoesNotBlockEasing()
         {
             var context = TestFixtureHelper.CreateContext(
@@ -353,6 +401,20 @@ namespace Cadence.Tests
                 new SessionHistoryEntry { Outcome = 1f, Efficiency = 0.5f },
                 new SessionHistoryEntry { Outcome = 0f, Efficiency = 0.5f }
             };
+        }
+
+        private static bool ContainsRule(AdjustmentProposal proposal, string ruleName)
+        {
+            if (proposal == null || proposal.Deltas == null)
+                return false;
+
+            for (int i = 0; i < proposal.Deltas.Count; i++)
+            {
+                if (proposal.Deltas[i].RuleName == ruleName)
+                    return true;
+            }
+
+            return false;
         }
 
     }

@@ -19,13 +19,15 @@ namespace Cadence.Rules
             if (context.LevelTypeConfig != null && !context.LevelTypeConfig.DDAEnabled)
                 return false;
             float threshold = _config != null ? _config.FrustrationReliefThreshold : 0.7f;
+            bool allowMidSession = _config == null || _config.AllowFrustrationReliefMidSession;
             return context.LastSession.FrustrationScore > threshold ||
-                   context.LastFlowReading.State == FlowState.Frustration;
+                   (allowMidSession && context.LastFlowReading.State == FlowState.Frustration);
         }
 
         public void Evaluate(AdjustmentContext context, AdjustmentProposal proposal)
         {
             float threshold = _config != null ? _config.FrustrationReliefThreshold : 0.7f;
+            bool allowMidSession = _config == null || _config.AllowFrustrationReliefMidSession;
             float frustration = context.LastSession.FrustrationScore;
             float severity = Mathf.Clamp01((frustration - threshold) / (1f - threshold));
 
@@ -58,8 +60,8 @@ namespace Cadence.Rules
                 }
             }
 
-            // Mark as mid-session if frustration is from flow detector
-            if (context.LastFlowReading.State == FlowState.Frustration)
+            // Mark as mid-session if allowed and frustration is from flow detector.
+            if (allowMidSession && context.LastFlowReading.State == FlowState.Frustration)
             {
                 proposal.Timing = AdjustmentTiming.MidSession;
             }

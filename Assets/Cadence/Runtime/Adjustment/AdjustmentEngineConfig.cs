@@ -174,7 +174,8 @@ namespace Cadence
             "             * LevelType.AdjustmentScale\n" +
             "             * 1.5x for ChurnRisk\n" +
             "             * 1.3x for StrugglingLearner\n\n" +
-            "  If FlowState == Frustration: Timing = MidSession (immediate)")]
+            "  If Allow Mid-Session Relief is enabled and FlowState == Frustration:\n" +
+            "    Timing = MidSession (immediate)")]
         [LabelText("Frustration Threshold")]
         [PropertyTooltip("FrustrationScore above this triggers relief.\n" +
                           "0.7 = high bar (reduces false positives). Lower = more sensitive to frustration signals.")]
@@ -186,6 +187,17 @@ namespace Cadence
         [Tooltip("Frustration Relief Threshold. Frustration score above this triggers emergency easing. Score = waste ratio (30%) + inter-move variance (25%) + pause count (20%) + low efficiency (25%). 0.7 = high bar, fewer false positives.")]
 #endif
         [Range(0f, 1f)] public float FrustrationReliefThreshold = 0.7f;
+
+#if ODIN_INSPECTOR
+        [FoldoutGroup("Frustration Relief Rule")]
+        [LabelText("Allow Mid-Session Relief")]
+        [PropertyTooltip("When enabled, FlowState.Frustration can trigger immediate MidSession relief.\n" +
+                          "Disable for games that only want FrustrationScore-based between-session relief.")]
+        [ToggleLeft]
+#else
+        [Tooltip("Allow FlowState.Frustration to trigger immediate MidSession relief. Disable for games that only want FrustrationScore-based between-session relief.")]
+#endif
+        public bool AllowFrustrationReliefMidSession = true;
 
         // ───────────────────── New Player ─────────────────────
 

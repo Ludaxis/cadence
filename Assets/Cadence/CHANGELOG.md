@@ -3,6 +3,13 @@
 All notable changes to the Cadence DDA SDK are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.3] - 2026-05-18
+
+### Added
+- `AdjustmentEngineConfig.AllowFrustrationReliefMidSession` to disable the
+  `FlowState.Frustration` immediate relief path while keeping
+  `FrustrationScore` between-session relief enabled.
+
 ## [1.3.2] - 2026-05-18
 
 ### Added
