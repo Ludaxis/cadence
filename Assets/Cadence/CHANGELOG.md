@@ -3,6 +3,12 @@
 All notable changes to the Cadence DDA SDK are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.3.2] - 2026-05-18
+
+### Added
+- Failed-retry variant safety helpers via `IDDAService.CapVariantStepForFailedRetry(...)`
+  and `IDDAService.CapVariantForFailedRetry(...)`.
+
 ## [1.3.1] - 2026-05-15
 
 ### Added

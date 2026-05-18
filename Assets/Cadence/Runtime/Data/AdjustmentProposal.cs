@@ -76,6 +76,25 @@ namespace Cadence
             int absCap = Math.Max(0, maxAbsStep);
             return Math.Max(-absCap, Math.Min(absCap, proposalStep));
         }
+
+        /// <summary>
+        /// Prevents a same-level retry after a failed attempt from increasing difficulty.
+        /// Use this after the host converts a proposal into a variant step.
+        /// </summary>
+        public static int CapVariantStepForFailedRetry(int proposalStep, bool isFailedRetry)
+        {
+            return isFailedRetry ? Math.Min(0, proposalStep) : proposalStep;
+        }
+
+        /// <summary>
+        /// Prevents a same-level retry after a failed attempt from serving a harder variant
+        /// than the variant that was just failed.
+        /// </summary>
+        public static int CapVariantForFailedRetry(int proposedVariant, int failedVariant,
+            bool isFailedRetry)
+        {
+            return isFailedRetry ? Math.Min(proposedVariant, failedVariant) : proposedVariant;
+        }
     }
 
     /// <summary>

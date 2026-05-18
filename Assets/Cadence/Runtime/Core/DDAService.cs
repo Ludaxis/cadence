@@ -266,6 +266,20 @@ namespace Cadence
                 maxAbsStep);
         }
 
+        public int CapVariantStepForFailedRetry(int proposalStep, bool isFailedRetry)
+        {
+            return AdjustmentProposal.CapVariantStepForFailedRetry(proposalStep, isFailedRetry);
+        }
+
+        public int CapVariantForFailedRetry(int proposedVariant, int failedVariant,
+            bool isFailedRetry)
+        {
+            return AdjustmentProposal.CapVariantForFailedRetry(
+                proposedVariant,
+                failedVariant,
+                isFailedRetry);
+        }
+
         public void RecordProposalApplied(AdjustmentProposal proposal)
         {
             RecordProposalApplied(proposal, null);

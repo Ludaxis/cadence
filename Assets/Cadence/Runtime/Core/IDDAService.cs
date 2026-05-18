@@ -93,6 +93,25 @@ namespace Cadence
         int CapVariantStepForConfidence(int proposalStep, AdjustmentProposal proposal = null);
 
         /// <summary>
+        /// Applies the SDK failed-retry safety cap to a host-game variant step.
+        /// Call this when retrying the same level after a failed attempt.
+        /// </summary>
+        /// <param name="proposalStep">The host-computed variant step before safety capping.</param>
+        /// <param name="isFailedRetry">True only when replaying the same level after a loss.</param>
+        /// <returns>A step that cannot increase difficulty during failed retry.</returns>
+        int CapVariantStepForFailedRetry(int proposalStep, bool isFailedRetry);
+
+        /// <summary>
+        /// Applies the SDK failed-retry safety cap after the host has computed the final variant.
+        /// Call this when retrying the same level after a failed attempt.
+        /// </summary>
+        /// <param name="proposedVariant">Variant the host planned to serve.</param>
+        /// <param name="failedVariant">Variant the player just failed.</param>
+        /// <param name="isFailedRetry">True only when replaying the same level after a loss.</param>
+        /// <returns>A variant that cannot be harder than the failed variant during failed retry.</returns>
+        int CapVariantForFailedRetry(int proposedVariant, int failedVariant, bool isFailedRetry);
+
+        /// <summary>
         /// Records that the host actually applied a proposal. This is the only call that updates
         /// adjustment cooldowns; <see cref="GetProposal"/> is evaluation-only.
         /// </summary>
